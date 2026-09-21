@@ -25,7 +25,7 @@ class SentriXConfig:
             owner_id=int(os.getenv("OWNER_ID", "0")),
             bot_username=os.getenv("SENTRIX_BOT_USERNAME", "HR_sentrix_bot").lstrip("@"),
             log_group_id=int(os.getenv("LOG_GROUP_ID", "0")),
-            support_url=os.getenv("SENTRIX_SUPPORT_URL", "https://t.me/sentrix_support"),
+            support_url=os.getenv("SENTRIX_SUPPORT_URL", "https://t.me/sentrix_updates"),
             updates_url=os.getenv("SENTRIX_UPDATES_URL", "https://t.me/sentrix_updates"),
             storage_path=os.getenv("STORAGE_PATH", "/data/modbot"),
         )

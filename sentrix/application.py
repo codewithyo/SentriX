@@ -46,7 +46,7 @@ from sentrix.context import FeatureContext
 from sentrix.database import MappingStore
 from sentrix.builtin import build_registry
 from sentrix.logging import AdminLogService, LOGGER, configure_logging
-from sentrix.help import category_text, help_markup, help_text
+from sentrix.help import help_markup, help_text, render_callback
 from sentrix.settings import settings_markup, settings_text
 from sentrix.setup import STEPS, setup_markup
 
@@ -5808,12 +5808,15 @@ async def handle_callback(bot: Client, cb: dict):
                 return
 
         if data.startswith("sxhelp_"):
-            category = data.split("_", 1)[1]
-            text = category_text(category)
-            if not text:
-                return await tg_answer_cb(cb_id, "❌ Unknown help category.", alert=True)
-            await tg_edit_text(chat_id, message.get("message_id"), text, markup=help_markup())
-            return await tg_answer_cb(cb_id, "✅ Help opened.")
+            rendered = render_callback(data)
+            if not rendered:
+                return await tg_answer_cb(cb_id, "❌ Unknown help page.", alert=True)
+            text, markup = rendered
+            if data == "sxhelp_close":
+                text = "🛡️ SentriX Help Center closed. Use `/help` to open it again."
+                markup = {"inline_keyboard": []}
+            await tg_edit_text(chat_id, message.get("message_id"), text, markup=markup)
+            return await tg_answer_cb(cb_id, "✅ Help updated.")
 
         if data == "sxsetup_continue":
             if not is_owner(uid) and not await is_chat_admin(bot, chat_id, uid):
@@ -6005,7 +6008,7 @@ async def handle_callback(bot: Client, cb: dict):
 
         if data == "start_help":
             await tg_answer_cb(cb_id, "Opening help...")
-            await tg_send(chat_id, help_text(), markup=help_markup())
+            await tg_edit_text(chat_id, message.get("message_id"), help_text(), markup=help_markup())
             return
 
         if data == "start_features":

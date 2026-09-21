@@ -121,7 +121,7 @@ class DataCache:
 # =========================================================
 
 BOT_COMMANDS = [
-    {"command": "start",              "description": "🚀 Start the bot & view welcome message"},
+    {"command": "start",              "description": "🛡️ Open the SentriX control panel"},
     {"command": "help",               "description": "📖 Show help for your role"},
     {"command": "hr",                 "description": "🆔 Get profile or group information"},
     {"command": "hstats",             "description": "📊 Show moderation stats"},
@@ -168,6 +168,20 @@ BOT_COMMANDS = [
     {"command": "warns",              "description": "⚠️ Show user warnings"},
     {"command": "resetwarns",         "description": "♻️ Reset user warnings"},
     {"command": "hdel",               "description": "🗑️ Delete a message"},
+    {"command": "purge",              "description": "🧹 Delete replied messages in bulk"},
+    {"command": "warnmode",            "description": "⚙️ Configure warning limits"},
+    {"command": "unwarn",             "description": "✅ Remove a warning"},
+    {"command": "lock",               "description": "🔒 Lock a content type"},
+    {"command": "unlock",              "description": "🔓 Unlock a content type"},
+    {"command": "setwelcome",         "description": "👋 Configure welcome messages"},
+    {"command": "setgoodbye",         "description": "👋 Configure goodbye messages"},
+    {"command": "setrules",           "description": "📜 Configure group rules"},
+    {"command": "report",             "description": "🚨 Report a message to admins"},
+    {"command": "features",           "description": "🛡️ View SentriX features"},
+    {"command": "custom",             "description": "🧩 Create a custom command"},
+    {"command": "customcommands",     "description": "🧩 List custom commands"},
+    {"command": "stopall",            "description": "🧹 Remove all keyword filters"},
+    {"command": "captcha",             "description": "🔐 Configure member verification"},
     {"command": "hprotect",           "description": "🛡️ Protect a user"},
     {"command": "hunprotect",         "description": "🔓 Remove protection"},
     {"command": "hcase",              "description": "📋 View case details"},
@@ -194,6 +208,7 @@ MODERATION_COMMANDS = {
     "hwelcome", "hgoodbye", "hrules", "hbot",
     # broadcast command
     "hbroadcast",
+    "hpurge", "hstopall", "hcustom", "hcustomcommands", "hdelcustom", "hreport", "hcaptcha",
 }
 ACTION_LOG_AUTO_DELETE = 600  # seconds
 
@@ -264,6 +279,9 @@ Path(FALLBACK_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
 _cache = DataCache(ttl_seconds=300)  # 5-minute TTL for most data
 _log_group_cache = DataCache(ttl_seconds=3600)  # 1-hour TTL for log group
 _webhook_dedup = {}  # Webhook deduplication for request IDs
+_automod_activity = {}  # (chat_id, user_id) -> recent message timestamps
+_automod_last_text = {}  # (chat_id, user_id) -> (text, timestamp)
+_pending_verification = {}  # (chat_id, user_id) -> created timestamp
 
 # =========================================================
 # VALIDATE CONFIG
@@ -822,7 +840,7 @@ async def tg_answer_cb(cb_id: str, text: str, alert: bool = False):
     })
 
 async def tg_delete(chat_id: int, message_id: int):
-    await tg_api("deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
+    return await tg_api("deleteMessage", json={"chat_id": chat_id, "message_id": message_id})
 
 # =========================================================
 # MODERATION API WRAPPERS
@@ -1476,6 +1494,37 @@ def note_list(chat_id: int) -> list[str]:
 def note_count(chat_id: int) -> int:
     return len(_notes_for_chat(chat_id))
 
+
+def custom_command_get(chat_id: int, name: str) -> dict | None:
+    """Read a custom command from the existing per-group notes store."""
+    return _notes_for_chat(chat_id).get(f"__command__:{name.lower().strip()}")
+
+
+def custom_command_save(chat_id: int, name: str, response: str, created_by: int):
+    notes = _notes_for_chat(chat_id)
+    notes[f"__command__:{name.lower().strip()}"] = {
+        "content": response,
+        "type": "command",
+        "created_by": created_by,
+        "updated_at": str(datetime.now()),
+    }
+    _save_notes_for_chat(chat_id, notes)
+
+
+def custom_command_delete(chat_id: int, name: str) -> bool:
+    notes = _notes_for_chat(chat_id)
+    key = f"__command__:{name.lower().strip()}"
+    if key not in notes:
+        return False
+    notes.pop(key, None)
+    _save_notes_for_chat(chat_id, notes)
+    return True
+
+
+def custom_command_list(chat_id: int) -> list[str]:
+    prefix = "__command__:"
+    return sorted(key[len(prefix):] for key in _notes_for_chat(chat_id) if key.startswith(prefix))
+
 # =========================================================
 # FILTERS SYSTEM
 # =========================================================
@@ -1740,10 +1789,13 @@ def _user_display_name(user: dict) -> str:
     return uname or "User"
 
 
-def _format_welcome_text(template: str, user: dict) -> str:
+def _format_welcome_text(template: str, user: dict, chat_name: str = "") -> str:
     uid  = user.get("id") if isinstance(user, dict) else None
     name = _user_display_name(user)
     safe_name = _escape_markdown(name)
+    first = _escape_markdown((user.get("first_name") or "User") if isinstance(user, dict) else "User")
+    last = _escape_markdown((user.get("last_name") or "") if isinstance(user, dict) else "")
+    username = (user.get("username") or "") if isinstance(user, dict) else ""
     mention = safe_name
     if isinstance(uid, int) and uid > 0:
         mention = f"[{safe_name}](tg://user?id={uid})"
@@ -1751,6 +1803,10 @@ def _format_welcome_text(template: str, user: dict) -> str:
     return (
         text.replace("{mention}", mention)
             .replace("{name}", safe_name)
+            .replace("{first}", first)
+            .replace("{last}", last)
+            .replace("{username}", username)
+            .replace("{chat}", _escape_markdown(chat_name))
             .replace("{id}", str(uid or ""))
     )
 
@@ -3363,14 +3419,21 @@ async def handle_message(bot: Client, msg: dict):
                 welcome_entry = _welcome_for_chat(chat_id)
                 welcome_text  = welcome_entry.get("text") if isinstance(welcome_entry, dict) else None
                 welcome_on    = welcome_entry.get("enabled", True) if isinstance(welcome_entry, dict) else False
-                if welcome_text and welcome_on:
-                    for member in new_members:
-                        if not isinstance(member, dict):
-                            continue
-                        if member.get("id") == _bot_id:
-                            continue
-                        rendered = _format_welcome_text(welcome_text, member)
-                        await tg_send(chat_id, rendered, reply_to=msg_id)
+                chat_name = msg.get("chat", {}).get("title") or "this group"
+                for member in new_members:
+                    if not isinstance(member, dict):
+                        continue
+                    if member.get("id") == _bot_id:
+                        continue
+                    rendered = _format_welcome_text(welcome_text, member, chat_name) if welcome_text and welcome_on else ""
+                    member_id = member.get("id")
+                    verify_enabled = bool(isinstance(welcome_entry, dict) and welcome_entry.get("captcha_enabled"))
+                    if verify_enabled and member_id:
+                        _pending_verification[(chat_id, member_id)] = time.time()
+                        rendered = (rendered + "\n\n" if rendered else "") + "🔐 **Verification required**\nTap below to verify yourself."
+                    if rendered:
+                        markup = build_markup((("🔐 Verify Yourself", f"cb:verify_{chat_id}_{member_id}"),)) if verify_enabled and member_id else None
+                        await tg_send(chat_id, rendered, reply_to=msg_id, markup=markup)
 
             left_member = msg.get("left_chat_member")
             if isinstance(left_member, dict):
@@ -3379,7 +3442,7 @@ async def handle_message(bot: Client, msg: dict):
                     goodbye_text  = goodbye_entry.get("text") if isinstance(goodbye_entry, dict) else None
                     goodbye_on    = goodbye_entry.get("enabled", True) if isinstance(goodbye_entry, dict) else False
                     if goodbye_text and goodbye_on:
-                        rendered = _format_welcome_text(goodbye_text, left_member)
+                        rendered = _format_welcome_text(goodbye_text, left_member, msg.get("chat", {}).get("title") or "this group")
                         await tg_send(chat_id, rendered, reply_to=msg_id)
 
         # ── Non-command messages: filters + #note triggers ────────────────
@@ -3421,6 +3484,67 @@ async def handle_message(bot: Client, msg: dict):
                     return
             
             if not is_private and text:
+                sender = msg.get("from") or {}
+                sender_is_bot = bool(sender.get("is_bot"))
+                if uid and not sender_is_bot and uid != _bot_id:
+                    key = (chat_id, uid)
+                    now = time.monotonic()
+                    activity = [stamp for stamp in _automod_activity.get(key, []) if now - stamp <= 3]
+                    activity.append(now)
+                    _automod_activity[key] = activity[-12:]
+                    previous = _automod_last_text.get(key)
+                    _automod_last_text[key] = (text, now)
+
+                    lock_type = _get_lock_type(chat_id) if _is_lock_active(chat_id) else None
+                    content_fields = {
+                        "photos": "photo", "videos": "video", "audio": "audio",
+                        "documents": "document", "stickers": "sticker", "gifs": "animation",
+                        "polls": "poll", "media": "photo", "all": "all",
+                    }
+                    locked_field = content_fields.get(lock_type)
+                    lock_violation = bool(
+                        locked_field and (
+                            locked_field == "all"
+                            or locked_field == "photo" and any(k in msg for k in ("photo", "caption"))
+                            or locked_field == "video" and "video" in msg
+                            or locked_field == "audio" and any(k in msg for k in ("audio", "voice"))
+                            or locked_field == "document" and "document" in msg
+                            or locked_field == "sticker" and "sticker" in msg
+                            or locked_field == "animation" and "animation" in msg
+                            or locked_field == "poll" and "poll" in msg
+                            or locked_field == "all" and bool(text)
+                        )
+                    )
+                    has_link = bool(re.search(r"(?:https?://|www\.|t\.me/|telegram\.me/)", text, re.IGNORECASE))
+                    link_locked = _get_command_lock_status(chat_id).get("link", False) and has_link
+                    repeated = bool(previous and previous[0].strip().lower() == text.strip().lower() and now - previous[1] <= 10)
+                    flood = len(activity) >= 5
+                    excessive_mentions = len(re.findall(r"@\w+", text)) >= 6
+                    excessive_emojis = len(re.findall(r"[^\w\s,.!?]", text)) >= 12
+                    violation = lock_violation or link_locked or repeated or flood or excessive_mentions or excessive_emojis
+                    if violation and not is_protected(uid, chat_id):
+                        try:
+                            if not await is_chat_admin(bot, chat_id, uid):
+                                await api_delete_msg(chat_id, msg_id)
+                                reason = (
+                                    f"Locked content: {lock_type}" if lock_violation else
+                                    "Blocked link" if link_locked else
+                                    "Repeated message" if repeated else
+                                    "Flooding" if flood else
+                                    "Mass mentions" if excessive_mentions else "Excessive emojis"
+                                )
+                                result = warn(uid, chat_id, reason, warner="AUTOMOD")
+                                action = result.get("action")
+                                if action == "ban":
+                                    await api_ban(chat_id, uid)
+                                elif action == "kick":
+                                    await api_kick(chat_id, uid)
+                                elif action == "mute":
+                                    await api_mute(chat_id, uid)
+                                return
+                        except Exception as automod_error:
+                            log_msg(f"automod enforcement failed: {automod_error}", "WARNING")
+
                 # 1) #notename trigger
                 hashtags = re.findall(r'#(\w+)', text)
                 for tag in hashtags:
@@ -3521,6 +3645,26 @@ async def handle_message(bot: Client, msg: dict):
             "unmute": "hunmute",
             "warn": "hwarn",
             "del": "hdel",
+            "unwarn": "hresetwarns",
+            "warnmode": "hwarnconfig",
+            "lock": "hlock",
+            "unlock": "hunlock",
+            "locktypes": "hlocktypelist",
+            "setwelcome": "hsetwelcome",
+            "welcome": "hwelcome",
+            "setgoodbye": "hsetgoodbye",
+            "goodbye": "hgoodbye",
+            "setrules": "hsetrules",
+            "rules": "hrules",
+            "report": "hreport",
+            "purge": "hpurge",
+            "stopall": "hstopall",
+            "blocklist": "haddblocklist",
+            "blocklists": "hblocklists",
+            "custom": "hcustom",
+            "customcommands": "hcustomcommands",
+            "delcustom": "hdelcustom",
+            "captcha": "hcaptcha",
         }
         raw_cmd = command_aliases.get(raw_cmd, raw_cmd)
         args    = parts[1].split() if len(parts) > 1 else []
@@ -3759,15 +3903,16 @@ async def handle_message(bot: Client, msg: dict):
                 bot_username = "bot"
             
             markup = build_markup(
-                (("➕ Add Bot to Group", f"url:https://t.me/{bot_username}?startgroup=true"),),
-                (("👤 Primary Dev", f"url:https://t.me/dreamm_ca"), ("👨‍💻 Tech Lead", f"url:https://t.me/developer_hr")),
+                (("➕ Add to Group", f"url:https://t.me/{bot_username}?startgroup=true"),),
+                (("📚 Help & Commands", "cb:start_help"), ("🛡️ Features", "cb:start_features")),
+                (("📢 Updates", "url:https://t.me/sentrix_updates"), ("💬 Support", "url:https://t.me/sentrix_support")),
             )
             
             await reply_text(
-                "🛡️ **SentriX Prime - v2.0**\n"
-                "*Professional Group Management Bot*\n\n"
-                "**Welcome to next-gen group moderation**\n"
-                "Advanced automation, intelligent security, and powerful utilities designed for professional communities.\n\n"
+                "🛡️ **Welcome to SentriX**\n\n"
+                "Your all-in-one Telegram group management & protection bot.\n\n"
+                "Keep your community **safe, clean and automated** with powerful moderation tools.\n\n"
+                "⚡ Fast • Secure • Customizable\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**🚀 Core Features**\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -3806,6 +3951,31 @@ async def handle_message(bot: Client, msg: dict):
             else:
                 await reply_text(role_help_text(uid))
             return
+
+        if raw_cmd == "features":
+            await reply_text(
+                "🛡️ **SentriX Features**\n\n"
+                "• Moderation: ban, mute, kick, warn, purge and admin tools\n"
+                "• Protection: anti-spam, repeated-message and link controls\n"
+                "• Filters: custom keyword replies and reusable media notes\n"
+                "• Welcome: greetings, goodbye messages and rich variables\n"
+                "• Locks: links, media, stickers, GIFs, polls and forwards\n"
+                "• AutoMod: delete → warn → mute → ban actions\n"
+                "• Notes and custom commands for group information"
+            )
+            return
+
+        if raw_cmd == "hcaptcha":
+            if not is_authorized_actor():
+                return await security_fail()
+            if not args or args[0].lower() not in ("on", "off", "enable", "disable"):
+                enabled = bool((_welcome_for_chat(action_chat_id) or {}).get("captcha_enabled"))
+                return await reply_text(f"🔐 CAPTCHA is currently **{'on' if enabled else 'off'}**. Usage: `/captcha on|off`")
+            enabled = args[0].lower() in ("on", "enable")
+            entry = _welcome_for_chat(action_chat_id) or {}
+            entry["captcha_enabled"] = enabled
+            _save_welcome_for_chat(action_chat_id, entry)
+            return await reply_text(f"{'🟢' if enabled else '🔴'} CAPTCHA verification turned **{'on' if enabled else 'off'}**.")
 
         # ── /setwelcome ───────────────────────────────────────────────────
         if raw_cmd == "hsetwelcome":
@@ -4544,6 +4714,34 @@ async def handle_message(bot: Client, msg: dict):
             )
             return
 
+        if raw_cmd == "hcustom":
+            if not is_authorized_actor():
+                return await security_fail()
+            if len(args) < 2:
+                return await reply_text("Usage: `/custom <name> <response>`\nExample: `/custom socials Instagram: ...`")
+            name = args[0].lower().lstrip("/")
+            if not re.fullmatch(r"[a-z0-9_]{1,32}", name):
+                return await reply_text("❌ Command names may contain only letters, numbers, and underscores.")
+            if name in {"start", "help", "custom", "customcommands"}:
+                return await reply_text("❌ That command name is reserved.")
+            custom_command_save(action_chat_id, name, " ".join(args[1:]).strip(), uid)
+            return await reply_text(f"✅ Custom command `/{name}` saved.\nAnyone can now use it in this group.")
+
+        if raw_cmd == "hcustomcommands":
+            names = custom_command_list(action_chat_id)
+            if not names:
+                return await reply_text("🧩 No custom commands saved yet.\nUse `/custom <name> <response>` to create one.")
+            return await reply_text("🧩 **Custom Commands**\n\n" + "\n".join(f"• `/{name}`" for name in names))
+
+        if raw_cmd == "hdelcustom":
+            if not is_authorized_actor():
+                return await security_fail()
+            if not args:
+                return await reply_text("Usage: `/delcustom <name>`")
+            name = args[0].lower().lstrip("/")
+            removed = custom_command_delete(action_chat_id, name)
+            return await reply_text(f"{'✅ Deleted' if removed else '❌ Command not found'}: `/{name}`")
+
         # ══════════════════════════════════════════════════════════════════
         # FILTERS COMMANDS
         # ══════════════════════════════════════════════════════════════════
@@ -4608,6 +4806,12 @@ async def handle_message(bot: Client, msg: dict):
             else:
                 await reply_text(f"❌ No filter found for `{keyword}`.\nUse `/hfilters` to see all active filters.")
             return
+
+        if raw_cmd == "hstopall":
+            if not is_authorized_actor():
+                return await security_fail()
+            _save_filters_for_chat(action_chat_id, {})
+            return await reply_text("✅ All keyword filters removed from this group.")
 
         if raw_cmd == "hfilters":
             keywords = filter_list(action_chat_id)
@@ -5345,6 +5549,23 @@ async def handle_message(bot: Client, msg: dict):
             await send_action_log(chat_id, msg_id, "DELETE", target, "Message Deleted", case_id, actor_mod_info())
             return
 
+        if raw_cmd == "hpurge":
+            if not await check_mod("delete"):
+                return
+            if not reply:
+                return await reply_text("❌ Reply to the oldest message to purge from.")
+            try:
+                count = max(1, min(int(args[0]) if args else 10, 100))
+            except ValueError:
+                return await reply_text("❌ Usage: `/purge [1-100]` while replying to a message.")
+            start_id = int(reply.get("message_id", 0))
+            deleted = 0
+            for target_message_id in range(start_id, start_id + count):
+                result = await tg_delete(chat_id, target_message_id)
+                if result.get("ok"):
+                    deleted += 1
+            return await reply_text(f"🧹 Purged `{deleted}` message(s).")
+
         if raw_cmd == "hprotect":
             if not is_owner_actor():
                 return await reply_text("❌ Owner only.")
@@ -5477,6 +5698,12 @@ async def handle_message(bot: Client, msg: dict):
             )
             return
 
+        if not is_private:
+            custom = custom_command_get(chat_id, raw_cmd)
+            if custom:
+                await tg_send(chat_id, _format_welcome_text(custom.get("content", ""), msg.get("from") or {}), reply_to=msg_id)
+                return
+
     except Exception as e:
         log_msg(f"handle_message error: {e}\n{traceback.format_exc()}", "ERROR")
 
@@ -5501,6 +5728,20 @@ async def handle_callback(bot: Client, cb: dict):
             if data.startswith(prefix):
                 await handle_ttt_callback(cb_id, data, uid, from_user, chat_id, message)
                 return
+
+        if data.startswith("verify_"):
+            try:
+                verify_chat, verify_user = (int(value) for value in data.split("_", 2)[1:])
+            except (ValueError, IndexError):
+                return await tg_answer_cb(cb_id, "❌ Invalid verification request.", alert=True)
+            if verify_chat != chat_id or verify_user != uid:
+                return await tg_answer_cb(cb_id, "❌ This verification button is for another member.", alert=True)
+            if (verify_chat, verify_user) not in _pending_verification:
+                return await tg_answer_cb(cb_id, "✅ You are already verified.")
+            _pending_verification.pop((verify_chat, verify_user), None)
+            await tg_answer_cb(cb_id, "✅ Verification successful!")
+            await tg_send(chat_id, "✅ Verification successful!\nWelcome to the group.")
+            return
 
         # setactive_<chat_id>
         if data.startswith("setactive_"):
@@ -5641,6 +5882,31 @@ async def handle_callback(bot: Client, cb: dict):
                 markup=moderation_help_markup(section),
             )
             await tg_answer_cb(cb_id, "✅ Help updated.")
+            return
+
+        if data == "start_help":
+            await tg_answer_cb(cb_id, "Opening help...")
+            await tg_send(
+                chat_id,
+                moderation_help_text("home", uid) if is_authorized(uid) else role_help_text(uid),
+                markup=moderation_help_markup("home") if is_authorized(uid) else None,
+            )
+            return
+
+        if data == "start_features":
+            await tg_answer_cb(cb_id, "SentriX features")
+            await tg_send(
+                chat_id,
+                "🛡️ **SentriX Features**\n\n"
+                "• Moderation: ban, mute, kick, warn, purge and admin tools\n"
+                "• Protection: anti-spam, repeated-message and link controls\n"
+                "• Filters: custom keyword replies with text or media notes\n"
+                "• Welcome: greetings, goodbye messages and verification hooks\n"
+                "• Locks: links, media, stickers, GIFs, polls and forwards\n"
+                "• AutoMod: configurable delete → warn → mute → ban actions\n"
+                "• Notes and custom commands for reusable group information\n\n"
+                "Use `/help` for the complete command reference.",
+            )
             return
 
         # Mod-only callbacks

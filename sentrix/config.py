@@ -10,7 +10,7 @@ class SentriXConfig:
     api_id: int
     api_hash: str
     owner_id: int
-    bot_username: str = "sentrix_bot"
+    bot_username: str = "HR_sentrix_bot"
     log_group_id: int = 0
     support_url: str = "https://t.me/sentrix_support"
     updates_url: str = "https://t.me/sentrix_updates"
@@ -23,7 +23,7 @@ class SentriXConfig:
             api_id=int(os.getenv("API_ID", "0")),
             api_hash=os.getenv("API_HASH", ""),
             owner_id=int(os.getenv("OWNER_ID", "0")),
-            bot_username=os.getenv("SENTRIX_BOT_USERNAME", "sentrix_bot").lstrip("@"),
+            bot_username=os.getenv("SENTRIX_BOT_USERNAME", "HR_sentrix_bot").lstrip("@"),
             log_group_id=int(os.getenv("LOG_GROUP_ID", "0")),
             support_url=os.getenv("SENTRIX_SUPPORT_URL", "https://t.me/sentrix_support"),
             updates_url=os.getenv("SENTRIX_UPDATES_URL", "https://t.me/sentrix_updates"),

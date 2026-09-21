@@ -45,7 +45,8 @@ from sentrix.config import SentriXConfig
 from sentrix.context import FeatureContext
 from sentrix.database import MappingStore
 from sentrix.builtin import build_registry
-from sentrix.logging import LOGGER, configure_logging
+from sentrix.logging import AdminLogService, LOGGER, configure_logging
+from sentrix.settings import settings_markup, settings_text
 
 # =========================================================
 # CACHING LAYER
@@ -188,6 +189,10 @@ BOT_COMMANDS = [
     {"command": "customcommands",     "description": "🧩 List custom commands"},
     {"command": "stopall",            "description": "🧹 Remove all keyword filters"},
     {"command": "captcha",             "description": "🔐 Configure member verification"},
+    {"command": "settings",            "description": "⚙️ Open SentriX group settings"},
+    {"command": "admins",              "description": "👑 List SentriX admins"},
+    {"command": "setadmin",            "description": "👑 Add a SentriX admin"},
+    {"command": "removeadmin",         "description": "👑 Remove a SentriX admin"},
     {"command": "hprotect",           "description": "🛡️ Protect a user"},
     {"command": "hunprotect",         "description": "🔓 Remove protection"},
     {"command": "hcase",              "description": "📋 View case details"},
@@ -215,6 +220,7 @@ MODERATION_COMMANDS = {
     # broadcast command
     "hbroadcast",
     "hpurge", "hstopall", "hcustom", "hcustomcommands", "hdelcustom", "hreport", "hcaptcha",
+    "settings", "admins", "setadmin", "removeadmin",
 }
 ACTION_LOG_AUTO_DELETE = 600  # seconds
 
@@ -3185,7 +3191,13 @@ async def send_action_log(
 
     lg = get_log_group()
     if lg and lg != source_chat:
-        await tg_send(lg, text, markup=markup)
+        await _sentrix_admin_log().record(
+            action,
+            user=mention,
+            admin=f"{badge} ({mod_uid})",
+            reason=reason,
+            extra=f"Case: #{case_id}",
+        )
 
 async def send_grant_log(chat_id, reply_to, granted_by, target, permission, case_id=None):
     case_line = f"\n📜 Case ID: #{case_id}" if case_id else ""
@@ -3429,17 +3441,22 @@ class _SentriXPermissions:
     async def require(self, chat_id: int, user_id: int, permission: str) -> bool:
         if permission == "owner":
             return is_owner(user_id)
-        return is_owner(user_id) or await self.is_admin(chat_id, user_id)
+        if is_owner(user_id) or await self.is_admin(chat_id, user_id):
+            return True
+        values = await asyncio.to_thread(load, SENTRIX_FEATURES_FILE)
+        admins = values.get(f"sentrix_admins:{chat_id}", {}) if isinstance(values, dict) else {}
+        return str(user_id) in admins
 
 
 _sentrix_registry = build_registry()
 _sentrix_store = None
+SENTRIX_FEATURES_FILE = f"{STORAGE_PATH}/sentrix_features.json"
 
 
 def _sentrix_context(bot: Client, msg: dict) -> FeatureContext:
     global _sentrix_store
     if _sentrix_store is None:
-        _sentrix_store = MappingStore(load, save)
+        _sentrix_store = MappingStore(load, save, SENTRIX_FEATURES_FILE)
     return FeatureContext(
         config=SentriXConfig.from_env(),
         store=_sentrix_store,
@@ -3447,6 +3464,10 @@ def _sentrix_context(bot: Client, msg: dict) -> FeatureContext:
         permissions=_SentriXPermissions(bot),
         update=msg,
     )
+
+
+def _sentrix_admin_log() -> AdminLogService:
+    return AdminLogService(tg_send, get_log_group())
 
 
 # =========================================================
@@ -3485,6 +3506,12 @@ async def handle_message(bot: Client, msg: dict):
                     if rendered:
                         markup = build_markup((("🔐 Verify Yourself", f"cb:verify_{chat_id}_{member_id}"),)) if verify_enabled and member_id else None
                         await tg_send(chat_id, rendered, reply_to=msg_id, markup=markup)
+                        await _sentrix_admin_log().record(
+                            "JOIN",
+                            user=make_mention(member),
+                            admin="System",
+                            reason=f"Joined {_escape_markdown(chat_name)}",
+                        )
 
             left_member = msg.get("left_chat_member")
             if isinstance(left_member, dict):
@@ -3495,6 +3522,12 @@ async def handle_message(bot: Client, msg: dict):
                     if goodbye_text and goodbye_on:
                         rendered = _format_welcome_text(goodbye_text, left_member, msg.get("chat", {}).get("title") or "this group")
                         await tg_send(chat_id, rendered, reply_to=msg_id)
+                    await _sentrix_admin_log().record(
+                        "LEAVE",
+                        user=make_mention(left_member),
+                        admin="System",
+                        reason="Member left the group",
+                    )
 
         # ── Non-command messages: filters + #note triggers ────────────────
         if not text.startswith("/"):
@@ -3644,6 +3677,12 @@ async def handle_message(bot: Client, msg: dict):
                 keyword, fdata = filter_check(chat_id, text)
                 if keyword and fdata:
                     await tg_send(chat_id, fdata["response"], reply_to=msg_id, parse_mode=None)
+                    await _sentrix_admin_log().record(
+                        "FILTER TRIGGER",
+                        user=make_mention(msg.get("from") or {"id": uid}),
+                        admin="AutoMod",
+                        reason=f"Matched `{keyword}`",
+                    )
             return
 
         # ── Parse command ─────────────────────────────────────────────────
@@ -3738,7 +3777,7 @@ async def handle_message(bot: Client, msg: dict):
             await reply_text(err)
             return
 
-        if raw_cmd == "features" or (raw_cmd == "start" and not args):
+        if raw_cmd in {"features"} or (raw_cmd == "start" and not args):
             result = await _sentrix_registry.dispatch(raw_cmd, args, _sentrix_context(bot, msg))
             if result.handled:
                 await reply_text(result.text or "", markup=result.markup)
@@ -3756,6 +3795,22 @@ async def handle_message(bot: Client, msg: dict):
                     "Use `/hconnect <chat_id>` to connect."
                 )
             action_chat_id = resolved
+
+        if raw_cmd in {"settings", "admins", "setadmin", "removeadmin"}:
+            scoped_message = dict(msg)
+            scoped_message["chat"] = dict(msg.get("chat", {}))
+            scoped_message["chat"]["id"] = action_chat_id
+            result = await _sentrix_registry.dispatch(raw_cmd, args, _sentrix_context(bot, scoped_message))
+            if result.handled:
+                event = "SETTINGS" if raw_cmd == "settings" else "ADMIN MANAGEMENT"
+                await _sentrix_admin_log().record(
+                    event,
+                    user=f"`{uid}`",
+                    admin=f"`{uid}`",
+                    reason=f"Command `/{raw_cmd}`",
+                )
+                await reply_text(result.text or "", markup=result.markup)
+                return
 
         # ── Bot ON/OFF guard ──────────────────────────────────────────────
         # /start, /help and /bot must ALWAYS work, otherwise users have no
@@ -5728,6 +5783,27 @@ async def handle_callback(bot: Client, cb: dict):
             if data.startswith(prefix):
                 await handle_ttt_callback(cb_id, data, uid, from_user, chat_id, message)
                 return
+
+        if data.startswith("settings_"):
+            if not is_owner(uid) and not await is_chat_admin(bot, chat_id, uid):
+                return await tg_answer_cb(cb_id, "❌ Administrator permission required.", alert=True)
+            section = data.split("_", 1)[1]
+            labels = {
+                "moderation": "🛡️ Moderation settings: warnings, actions, and permissions.",
+                "antispam": "🚫 Anti-Spam settings: flood, repeats, mentions, and emoji limits.",
+                "links": "🔗 Link Protection settings: links and Telegram invites.",
+                "welcome": "👋 Welcome settings: greetings, goodbye, and variables.",
+                "verification": "🔐 Verification settings: CAPTCHA and unverified members.",
+                "locks": "🔒 Locks settings: media, stickers, GIFs, polls, and forwards.",
+                "filters": "📝 Filters settings: keyword responses and filter actions.",
+                "statistics": "📊 Statistics are available with `/hstats`.",
+                "logging": "📢 Admin logging is active when `LOG_GROUP_ID` is configured.",
+            }
+            if section not in labels:
+                return await tg_answer_cb(cb_id, "❌ Unknown settings category.", alert=True)
+            await tg_edit_text(chat_id, message.get("message_id"), f"⚙️ **SentriX Settings**\n\n{labels[section]}", markup=settings_markup())
+            await _sentrix_admin_log().record("SETTINGS", user=f"`{uid}`", admin=f"`{uid}`", reason=f"Opened {section}")
+            return await tg_answer_cb(cb_id, "✅ Settings opened.")
 
         if data.startswith("verify_"):
             try:

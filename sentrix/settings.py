@@ -3,6 +3,26 @@
 from .context import FeatureContext, FeatureResult
 
 
+def settings_markup() -> dict:
+    return {
+        "inline_keyboard": [
+            [{"text": "🛡️ Moderation", "callback_data": "settings_moderation"}, {"text": "🚫 Anti-Spam", "callback_data": "settings_antispam"}],
+            [{"text": "🔗 Link Protection", "callback_data": "settings_links"}, {"text": "👋 Welcome", "callback_data": "settings_welcome"}],
+            [{"text": "🔐 Verification", "callback_data": "settings_verification"}, {"text": "🔒 Locks", "callback_data": "settings_locks"}],
+            [{"text": "📝 Filters", "callback_data": "settings_filters"}, {"text": "📊 Statistics", "callback_data": "settings_statistics"}],
+            [{"text": "📢 Logging", "callback_data": "settings_logging"}],
+        ]
+    }
+
+
+def settings_text() -> str:
+    return (
+        "⚙️ **SentriX Settings**\n\n"
+        "Choose a category below to configure this group.\n"
+        "Changes are restricted to Telegram administrators and are logged."
+    )
+
+
 class SettingsFeature:
     commands = frozenset({"settings", "setsetting"})
 
@@ -14,9 +34,7 @@ class SettingsFeature:
         if not isinstance(values, dict):
             values = {}
         if command == "settings":
-            if not values:
-                return FeatureResult(True, "⚙️ No custom settings configured.")
-            return FeatureResult(True, "⚙️ **SentriX Settings**\n\n" + "\n".join(f"• `{k}`: `{v}`" for k, v in sorted(values.items())))
+            return FeatureResult(True, settings_text(), settings_markup())
         if len(args) < 2:
             return FeatureResult(True, "Usage: `/setsetting <name> <value>`")
         values[args[0].lower()] = " ".join(args[1:])

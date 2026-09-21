@@ -13,16 +13,23 @@ class AsyncStore(Protocol):
 class MappingStore:
     """Async adapter around the existing synchronous load/save functions."""
 
-    def __init__(self, loader: Callable[[str], Any], saver: Callable[[str, Any], Any]):
+    def __init__(self, loader: Callable[[str], Any], saver: Callable[[str, Any], Any], backing_file: str):
         self._loader = loader
         self._saver = saver
+        self._backing_file = backing_file
 
     async def get(self, namespace: str, default: Any = None) -> Any:
-        value = await asyncio.to_thread(self._loader, namespace)
-        return default if value is None else value
+        values = await asyncio.to_thread(self._loader, self._backing_file)
+        if not isinstance(values, dict):
+            return default
+        return values.get(namespace, default)
 
     async def set(self, namespace: str, value: Any) -> None:
-        await asyncio.to_thread(self._saver, namespace, value)
+        values = await asyncio.to_thread(self._loader, self._backing_file)
+        if not isinstance(values, dict):
+            values = {}
+        values[namespace] = value
+        await asyncio.to_thread(self._saver, self._backing_file, values)
 
 
 class MemoryStore:

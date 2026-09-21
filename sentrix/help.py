@@ -78,6 +78,9 @@ GUIDES = {
     "report": CommandGuide("/report", "Report a message to group administrators.", "/report [reason]", "/report suspicious link", "Everyone", "Reply to the message you want to report.", ("/stats",)),
     "promote": CommandGuide("/promote", "Promote a member to Telegram admin.", "/promote <user>", "/promote @moderator", "Group administrators", "This changes Telegram privileges; /setadmin only changes SentriX access.", ("/demote", "/setadmin")),
     "demote": CommandGuide("/demote", "Remove Telegram admin privileges.", "/demote <user>", "/demote @moderator", "Group administrators", "Use carefully; SentriX-specific admin access is separate.", ("/promote", "/removeadmin")),
+    "grant": CommandGuide("/grant", "Grant a grouped SentriX permission.", "/grant <user> <group>", "/grant @moderator ban", "Group owner, global admin, or holder of the `all` group", "Groups: ban, mute, warn, delete, pin, kick, lock, filter, welcome, logging, protection, settings, and all. `/grant @user` opens the interactive manager.", ("/revoke", "/grants")),
+    "revoke": CommandGuide("/revoke", "Revoke a grouped SentriX permission.", "/revoke <user> <group>", "/revoke @moderator mute", "Group owner, global admin, or holder of the `all` group", "Use `all` to remove the user's group-level grants.", ("/grant", "/grants")),
+    "grants": CommandGuide("/grants", "Display granted permission groups.", "/grants [user]", "/grants @moderator", "Everyone for self; grant managers for other users", "Permissions are isolated per group. The `all` group never grants owner/global-admin access.", ("/grant", "/revoke")),
 }
 
 
@@ -89,8 +92,9 @@ _ADDITIONAL_GUIDES = {
     "unpin": ("Remove the current pinned message.", "/unpin"),
     "auth": ("Authorize a SentriX moderator.", "/auth <user_id>"),
     "unauth": ("Remove SentriX moderator authorization.", "/unauth <user_id>"),
-    "grant": ("Grant a moderator permission.", "/grant <permission> <user_id>"),
-    "revoke": ("Revoke a moderator permission.", "/revoke <permission> <user_id>"),
+    "grant": ("Open the grouped Permission Grant Manager or grant a group directly.", "/grant <user> <group>"),
+    "revoke": ("Revoke a grouped permission from a user.", "/revoke <user> <group>"),
+    "grants": ("Show a user's granted permission groups.", "/grants [user]"),
     "freeze": ("Freeze a SentriX moderator.", "/freeze <user_id>"),
     "unfreeze": ("Unfreeze a SentriX moderator.", "/unfreeze <user_id>"),
     "badge": ("Set a moderator badge.", "/badge <user_id> <text>"),
@@ -149,7 +153,7 @@ for _command, (_description, _syntax) in _ADDITIONAL_GUIDES.items():
 
 
 CATEGORIES = (
-    HelpCategory("admin", "👮 Admin", "Moderate members and manage administrators.", ("promote", "demote", "adminlist", "setadmin", "removeadmin", "admincache", "auth", "unauth", "grant", "revoke", "freeze", "unfreeze", "badge", "ban", "tban", "unban", "kick", "kickme", "mute", "tmute", "unmute", "warn", "unwarn", "warnings", "warns", "resetwarns", "warnconfig", "warnmode", "del", "purge", "pin", "unpin", "protect", "unprotect", "protected", "case", "mod", "modinfo", "anonadmin", "adminerror", "zombies")),
+    HelpCategory("admin", "👮 Admin", "Moderate members and manage administrators.", ("grant", "revoke", "grants", "promote", "demote", "adminlist", "setadmin", "removeadmin", "admincache", "auth", "unauth", "freeze", "unfreeze", "badge", "ban", "tban", "unban", "kick", "kickme", "mute", "tmute", "unmute", "warn", "unwarn", "warnings", "warns", "resetwarns", "warnconfig", "warnmode", "del", "purge", "pin", "unpin", "protect", "unprotect", "protected", "case", "mod", "modinfo", "anonadmin", "adminerror", "zombies")),
     HelpCategory("protection", "🛡️ Protection", "Protect your group from spam, raids, and unwanted content.", ("antispam", "antiraid", "captcha", "setflood", "lock", "unlock", "locktype", "locktypes", "locktypelist", "locklist", "lockbot", "locklink", "unlockbot", "unlocklink", "addblocklist", "blocklist", "deleteblocklist", "blocklists", "blocklistmode", "bot")),
     HelpCategory("welcome", "👋 Welcome", "Configure join and leave messages.", ("welcome", "setwelcome", "goodbye", "setgoodbye")),
     HelpCategory("filters", "📝 Filters", "Create and manage automatic keyword replies.", ("filter", "filters", "stop", "stopall")),

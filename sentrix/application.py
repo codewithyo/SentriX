@@ -49,7 +49,13 @@ from sentrix.logging import AdminLogService, LOGGER, configure_logging
 from sentrix.help import help_markup, help_text, render_callback
 from sentrix.settings import settings_markup, settings_text
 from sentrix.setup import STEPS, setup_markup
-from sentrix.permissions import PermissionService
+from sentrix.permissions import (
+    ALL_GROUP,
+    PERMISSION_GROUPS,
+    PermissionService,
+    grant_manager_markup,
+    permission_group_for,
+)
 
 # =========================================================
 # CACHING LAYER
@@ -136,11 +142,8 @@ BOT_COMMANDS = [
     {"command": "ping", "description": "🏓 Check bot status"},
     {"command": "settings", "description": "⚙️ Open SentriX group settings"},
 ]
-VALID_PERMISSIONS = {"ban", "unban", "mute", "unmute", "kick", "warn", "delete", "pin"}
-
 MODERATION_COMMANDS = {
-    "ban", "ban", "tban", "kick", "kick", "mute", "mute", "tmute",
-    "unban", "unban", "unmute", "unmute", "warn",
+    "ban", "tban", "kick", "mute", "tmute", "unban", "unmute", "warn",
     "promote", "demote", "adminlist", "admincache", "anonadmin", "adminerror",
     "resetwarns", "del", "pin", "unpin",
     "save", "get", "clear", "notes",
@@ -155,6 +158,7 @@ MODERATION_COMMANDS = {
     "broadcast",
     "purge", "stopall", "custom", "customcommands", "delcustom", "report", "captcha",
     "settings", "admins", "setadmin", "removeadmin",
+    "grant", "revoke", "grants",
     "setup", "reset", "language", "antispam", "antiraid", "setflood",
     "setlog", "unsetlog", "logchannel", "logsettings", "connection", "info",
 }
@@ -253,6 +257,7 @@ log_msg(f"CONFIG: API_ID={API_ID} OWNER_ID={OWNER_ID} PORT={PORT} LOG_GROUP={LOG
 Path(STORAGE_PATH).mkdir(parents=True, exist_ok=True)
 
 AUTH_FILE             = f"{STORAGE_PATH}/auth.json"
+GROUP_PERMISSIONS_FILE = f"{STORAGE_PATH}/group_permissions.json"
 WARN_FILE             = f"{STORAGE_PATH}/warns.json"
 CASE_FILE             = f"{STORAGE_PATH}/cases.json"
 WARN_CONFIG_FILE      = f"{STORAGE_PATH}/warn_config.json"
@@ -281,6 +286,7 @@ BROADCAST_STATE_FILE  = f"{STORAGE_PATH}/broadcast_state.json"
 
 FALLBACK_FILE_MAP = {
     AUTH_FILE:             f"{FALLBACK_STORAGE_PATH}/auth.json",
+    GROUP_PERMISSIONS_FILE: f"{FALLBACK_STORAGE_PATH}/group_permissions.json",
     WARN_FILE:             f"{FALLBACK_STORAGE_PATH}/warns.json",
     CASE_FILE:             f"{FALLBACK_STORAGE_PATH}/cases.json",
     WARN_CONFIG_FILE:      f"{FALLBACK_STORAGE_PATH}/warn_config.json",
@@ -1089,11 +1095,17 @@ async def restore_from_telegram_pyrogram(bot: Client) -> int:
 # PERMISSION CHECKS
 # =========================================================
 
+def _group_grants_for_chat(chat_id: int) -> dict:
+    data = load(GROUP_PERMISSIONS_FILE)
+    return data.get(str(chat_id), {}) if isinstance(data, dict) else {}
+
+
 _permissions = PermissionService(
     OWNER_ID,
     api_get_chat_member,
     lambda: load(AUTH_FILE),
     SENTRIX_CONFIG.admin_ids,
+    _group_grants_for_chat,
 )
 
 def is_owner(uid: int) -> bool:
@@ -1107,6 +1119,42 @@ def has_permission(uid: int, perm: str) -> bool:
 
 def is_frozen(uid: int) -> bool:
     return _permissions.is_frozen(uid)
+
+
+def _save_group_grants(chat_id: int, grants: dict) -> None:
+    data = load(GROUP_PERMISSIONS_FILE)
+    if not isinstance(data, dict):
+        data = {}
+    if grants:
+        data[str(chat_id)] = grants
+    else:
+        data.pop(str(chat_id), None)
+    save(GROUP_PERMISSIONS_FILE, data)
+
+
+def grant_permission_group(chat_id: int, user_id: int, group: str) -> frozenset[str]:
+    grants = _group_grants_for_chat(chat_id)
+    current = set(grants.get(str(user_id), []))
+    current.add(group)
+    grants[str(user_id)] = sorted(current)
+    _save_group_grants(chat_id, grants)
+    return frozenset(current)
+
+
+def revoke_permission_group(chat_id: int, user_id: int, group: str) -> frozenset[str]:
+    grants = _group_grants_for_chat(chat_id)
+    current = set(grants.get(str(user_id), []))
+    current.discard(group)
+    if current:
+        grants[str(user_id)] = sorted(current)
+    else:
+        grants.pop(str(user_id), None)
+    _save_group_grants(chat_id, grants)
+    return frozenset(current)
+
+
+def permission_group_text(groups: set[str] | frozenset[str]) -> str:
+    return ", ".join(f"`{group}`" for group in sorted(groups)) or "none"
 
 # =========================================================
 # UTILITY HELPERS
@@ -2190,9 +2238,6 @@ def _chat_permissions_payload(chat) -> dict:
     ]
     return {field: bool(getattr(perms, field, True)) for field in fields}
 
-def grant_all_permissions() -> dict:
-    return {perm: True for perm in sorted(VALID_PERMISSIONS)}
-
 def get_moderation_stats() -> dict:
     cases = load(CASE_FILE)
     if not isinstance(cases, dict):
@@ -3185,6 +3230,11 @@ async def handle_message(bot: Client, msg: dict):
         actor_is_group_admin = is_anon_admin
         if action_chat_id and uid and not is_anon_admin:
             actor_is_group_admin = await _permissions.is_admin(action_chat_id, uid)
+        required_group = permission_group_for(raw_cmd)
+        group_permission_allowed = bool(
+            required_group
+            and (is_anon_admin or await _permissions.can_manage(action_chat_id, uid, raw_cmd))
+        )
 
         modular_commands = {
             "settings", "admins", "setadmin", "removeadmin", "setup", "reset", "language",
@@ -3222,7 +3272,7 @@ async def handle_message(bot: Client, msg: dict):
             return (not is_anon_admin) and is_owner(uid)
 
         def is_authorized_actor() -> bool:
-            return is_anon_admin or actor_is_group_admin or is_authorized(uid)
+            return is_anon_admin or actor_is_group_admin or is_authorized(uid) or group_permission_allowed
 
         def is_frozen_actor() -> bool:
             return False if is_anon_admin else is_frozen(uid)
@@ -3239,7 +3289,7 @@ async def handle_message(bot: Client, msg: dict):
             await tg_delete(chat_id, msg_id)
 
         async def check_mod(perm: str) -> bool:
-            if actor_is_group_admin:
+            if actor_is_group_admin or group_permission_allowed:
                 return True
             if not is_authorized_actor():
                 await security_fail()
@@ -3251,6 +3301,10 @@ async def handle_message(bot: Client, msg: dict):
                 await reply_text(f"❌ You don't have `{perm}` permission.")
                 return False
             return True
+
+        if required_group and not group_permission_allowed:
+            await security_fail()
+            return
 
         # ── /allowconnections ─────────────────────────────────────────────
         if raw_cmd == "allowconnections":
@@ -4372,74 +4426,53 @@ async def handle_message(bot: Client, msg: dict):
             return
 
         if raw_cmd == "grant":
-            if not is_owner_actor():
-                return
+            if not await _permissions.can_grant(action_chat_id, uid):
+                return await reply_text("❌ Group owner, global admin, or `all` permission required.")
             if not args:
-                return await reply_text(
-                    f"Usage: /grant <user_id> | /grant <permission> <user_id>\n"
-                    f"Valid: {', '.join(sorted(VALID_PERMISSIONS))}"
-                )
-            perm   = None
-            target = {}
-            tid    = None
-            terr   = None
-            if args[0].lower() in VALID_PERMISSIONS:
-                perm = args[0].lower()
-                target, tid, terr = await resolve_target_ext(bot, reply, args, 1)
-                if not tid:
-                    return await reply_text(terr or "❌ Reply to a user or pass their user ID.")
-            else:
-                target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
-                if not tid:
-                    return await reply_text(terr)
-                if len(args) > 1 and args[1].lower() not in VALID_PERMISSIONS:
-                    return await reply_text(f"❌ Invalid permission. Valid: {', '.join(sorted(VALID_PERMISSIONS))}")
-                perm = "all"
-            data = load(AUTH_FILE)
-            if str(tid) not in data:
-                return await reply_text("❌ User not authorized. Run /auth first.")
-            if perm == "all":
-                data[str(tid)]["permissions"] = grant_all_permissions()
-            else:
-                data[str(tid)]["permissions"][perm] = True
-            await save_and_backup(AUTH_FILE, data)
-            case_id = create_case("GRANT", uid, tid, f"Granted: {perm}")
-            await send_grant_log(chat_id, msg_id, uid, target, perm, case_id)
+                return await reply_text("Usage: `/grant <user> <group>`\nGroups: " + ", ".join(sorted(PERMISSION_GROUPS)) + ", all")
+            target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
+            if not tid:
+                return await reply_text(terr or "❌ Reply to a user or pass their user ID/@username.")
+            group = args[1].lower() if len(args) > 1 else ""
+            if group not in PERMISSION_GROUPS and group != ALL_GROUP:
+                if len(args) == 1:
+                    return await tg_send(
+                        chat_id,
+                        f"🔑 **Grant Manager**\n\nSelect a permission group for {make_mention(target)}.",
+                        reply_to=msg_id,
+                        markup=grant_manager_markup(action_chat_id, tid),
+                    )
+                return await reply_text(f"❌ Unknown group `{group}`. Valid: {', '.join(sorted(PERMISSION_GROUPS))}, all")
+            groups = grant_permission_group(action_chat_id, tid, group)
+            await reply_text(f"✅ Granted `{group}` to {make_mention(target)}.\nCurrent groups: {permission_group_text(groups)}")
+            await _sentrix_admin_log().record("GRANT", user=make_mention(target), admin=f"`{uid}`", reason=f"Granted group `{group}`")
             return
 
         if raw_cmd == "revoke":
-            if not is_owner_actor():
-                return
+            if not await _permissions.can_grant(action_chat_id, uid):
+                return await reply_text("❌ Group owner, global admin, or `all` permission required.")
             if not args:
-                return await reply_text(
-                    f"Usage: /revoke <permission|all> <user_id>\n"
-                    f"Valid: {', '.join(sorted(VALID_PERMISSIONS))}, all"
-                )
-            perm = args[0].lower()
-            if perm not in VALID_PERMISSIONS and perm != "all":
-                return await reply_text(f"❌ Invalid. Valid: {', '.join(sorted(VALID_PERMISSIONS))}, all")
-            target, tid, terr = await resolve_target_ext(bot, reply, args, 1)
+                return await reply_text("Usage: `/revoke <user> <group>`\nGroups: " + ", ".join(sorted(PERMISSION_GROUPS)) + ", all")
+            target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
             if not tid:
-                return await reply_text(terr)
-            data = load(AUTH_FILE)
-            if str(tid) not in data:
-                return await reply_text("❌ User is not a moderator.")
-            if perm == "all":
-                data[str(tid)]["permissions"] = {p: False for p in VALID_PERMISSIONS}
-            else:
-                data[str(tid)]["permissions"][perm] = False
-            await save_and_backup(AUTH_FILE, data)
-            case_id = create_case("REVOKE", uid, tid, f"Revoked: {perm}")
-            await reply_text(f"✅ Revoked `{perm}` from {make_mention(target)}")
-            lg = get_log_group()
-            if lg:
-                await tg_send(
-                    lg,
-                    f"📝 Permission Revoked\n\n"
-                    f"👤 {make_mention(target)}\n🔐 `{perm}`\n"
-                    f"🛡 By: `{uid}`\n📜 Case #{case_id}",
-                )
+                return await reply_text(terr or "❌ Reply to a user or pass their user ID/@username.")
+            group = args[1].lower() if len(args) > 1 else ""
+            if group not in PERMISSION_GROUPS and group != ALL_GROUP:
+                return await reply_text(f"❌ Unknown group `{group}`. Valid: {', '.join(sorted(PERMISSION_GROUPS))}, all")
+            groups = revoke_permission_group(action_chat_id, tid, group)
+            await reply_text(f"✅ Revoked `{group}` from {make_mention(target)}.\nCurrent groups: {permission_group_text(groups)}")
+            await _sentrix_admin_log().record("REVOKE", user=make_mention(target), admin=f"`{uid}`", reason=f"Revoked group `{group}`")
             return
+
+        if raw_cmd == "grants":
+            target, tid, terr = await resolve_target_ext(bot, reply, args, 0) if args or reply else ({"id": uid}, uid, None)
+            if not tid:
+                return await reply_text(terr or "❌ Could not identify that user.")
+            if tid != uid and not await _permissions.can_grant(action_chat_id, uid):
+                return await reply_text("❌ Only a group owner, global admin, or `all` grant holder can inspect another user's grants.")
+            groups = _permissions.granted_groups(action_chat_id, tid)
+            label = make_mention(target) if target else f"`{tid}`"
+            return await reply_text(f"🔑 **SentriX Permission Groups**\n\nUser: {label}\nGroups: {permission_group_text(groups)}")
 
         if raw_cmd == "freeze":
             if not is_owner_actor():
@@ -5169,6 +5202,34 @@ async def handle_callback(bot: Client, cb: dict):
             if data.startswith(prefix):
                 await handle_ttt_callback(cb_id, data, uid, from_user, chat_id, message)
                 return
+
+        if data == "sxgrant_close":
+            await tg_edit_text(chat_id, message.get("message_id"), "🔑 Grant Manager closed.", markup={"inline_keyboard": []})
+            return await tg_answer_cb(cb_id, "✅ Closed.")
+
+        if data.startswith("sxgrant_"):
+            parts = data.split("_", 3)
+            if len(parts) != 4:
+                return await tg_answer_cb(cb_id, "❌ Invalid grant action.", alert=True)
+            try:
+                grant_chat_id = int(parts[1])
+                target_id = int(parts[2])
+            except ValueError:
+                return await tg_answer_cb(cb_id, "❌ Invalid grant target.", alert=True)
+            group = parts[3]
+            if group not in PERMISSION_GROUPS and group != ALL_GROUP:
+                return await tg_answer_cb(cb_id, "❌ Unknown permission group.", alert=True)
+            if not await _permissions.can_grant(grant_chat_id, uid):
+                return await tg_answer_cb(cb_id, "❌ Grant authority required.", alert=True)
+            groups = grant_permission_group(grant_chat_id, target_id, group)
+            await tg_edit_text(
+                chat_id,
+                message.get("message_id"),
+                f"✅ Granted `{group}` to `{target_id}`.\nCurrent groups: {permission_group_text(groups)}",
+                markup=grant_manager_markup(grant_chat_id, target_id),
+            )
+            await tg_answer_cb(cb_id, "✅ Permission group granted.")
+            return
 
         if data.startswith("sxhelp_"):
             rendered = render_callback(data)

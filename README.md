@@ -46,6 +46,12 @@ New feature work belongs in the `sentrix/` package. Modules are async, dependenc
 | `notes.py` | Persistent group notes |
 | `verification.py` | CAPTCHA and member verification settings |
 | `settings.py` | Generic per-group settings |
+| `help.py` | Category-based Rose-style help navigation |
+| `setup.py` | Interactive seven-step group setup wizard |
+| `logging_commands.py` | `/setlog`, `/unsetlog`, `/logchannel`, `/logsettings` |
+| `protection.py` | Anti-spam, anti-raid, and flood settings |
+| `connections.py` | Connection command surface |
+| `information.py` | Group and user information commands |
 
 Shared contracts live in `sentrix/context.py`, `sentrix/database.py`, `sentrix/config.py`, and `sentrix/utils.py`. `sentrix/registry.py` provides isolated command dispatch and error handling. `sentrix/application.py` is the compatibility runtime for the remaining legacy handlers and persisted data; `api/index.py` is intentionally only the ASGI import surface.
 
@@ -93,6 +99,12 @@ Shared contracts live in `sentrix/context.py`, `sentrix/database.py`, `sentrix/c
    - Log group detection optimization
    - Webhook setup with automatic retry
    - Performance metrics tracking
+
+5. **Rose-Style Command System** ✅
+   - Category-based `/help` with inline navigation
+   - Interactive `/setup` wizard and `/settings` dashboard
+   - Dedicated log-channel commands and structured admin events
+   - SentriX-specific admins without Telegram admin privileges
 
 ---
 
@@ -228,6 +240,73 @@ Use the bot for moderation, note management, filters, multi-group control, broad
 - Connections: /hconnect, /hconnections, /hdisconnect, /hallowconnections, /hbroadcast
 - Owner tools: /hauth, /hgrant, /hrevoke, /hfreeze, /hunfreeze, /hbadge, /hwarnconfig
 - Games: /ttt, /tttleaderboard, /tttmystats, /tttend
+
+---
+
+## 🛡️ Rose-Style Command Guide
+
+Plain commands are the recommended interface. Existing `h*` commands remain available as compatibility aliases.
+
+### 🤖 Bot
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Open the SentriX welcome screen |
+| `/help` | Open category-based help |
+| `/about` | About SentriX |
+| `/ping` | Check bot availability |
+
+### 👮 Admin & Information
+
+`/promote`, `/demote`, `/ban`, `/unban`, `/kick`, `/mute`, `/unmute`, `/warn`, `/unwarn`, `/warnings`, `/purge`
+
+`/admins` lists SentriX-specific admins. `/setadmin <user_id>` and `/removeadmin <user_id>` manage bot permissions without changing Telegram roles. `/adminlist` continues to show Telegram group administrators.
+
+### 🛡️ Protection
+
+| Command | Description |
+|---------|-------------|
+| `/antispam [on|off]` | Toggle anti-spam protection |
+| `/antiraid [on|off]` | Toggle anti-raid protection |
+| `/captcha [on|off]` | Toggle member verification |
+| `/lock <type>` | Lock content types |
+| `/unlock <type>` | Remove a content lock |
+| `/setflood <messages> [seconds]` | Configure flood limits |
+
+### 👋 Welcome, Filters & Notes
+
+`/welcome`, `/setwelcome <text>`, `/goodbye`, `/setgoodbye <text>`
+
+`/filter <keyword> <response>`, `/filters`, `/stop <keyword>`, `/stopall`
+
+`/save <name> <text>`, `/get <name>`, `/notes`, `/clear <name>`
+
+### 📢 Logging
+
+`/setlog <channel_id>` configures the dedicated admin log channel. Admins can also forward a message from the desired channel and use `/setlog`.
+
+`/logchannel` shows the configured channel, `/unsetlog` removes it, and `/logsettings` shows enabled event types.
+
+SentriX logs moderation actions, filter triggers, member joins/leaves, settings changes, and SentriX-admin changes in a structured format:
+
+```text
+🛡️ BAN
+
+User: @username
+Admin: @admin
+Reason: Spam
+Time: 14:32
+```
+
+### ⚙️ Group Setup & Connections
+
+`/setup` opens the interactive setup wizard for Welcome, Rules, Verification, Anti-Spam, Filters, Logging, and Locks.
+
+`/settings` opens the inline settings dashboard. `/rules`, `/setrules`, `/reset`, and `/language` manage group setup. `/connect`, `/disconnect`, and `/connection` manage PM group connections.
+
+### 📊 Information
+
+`/id`, `/info`, `/admins`, `/stats`, and `/report` provide group and moderation information.
 
 ---
 

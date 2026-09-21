@@ -46,7 +46,9 @@ from sentrix.context import FeatureContext
 from sentrix.database import MappingStore
 from sentrix.builtin import build_registry
 from sentrix.logging import AdminLogService, LOGGER, configure_logging
+from sentrix.help import category_text, help_markup, help_text
 from sentrix.settings import settings_markup, settings_text
+from sentrix.setup import STEPS, setup_markup
 
 # =========================================================
 # CACHING LAYER
@@ -129,7 +131,7 @@ class DataCache:
 
 BOT_COMMANDS = [
     {"command": "start",              "description": "🛡️ Open the SentriX control panel"},
-    {"command": "help",               "description": "📖 Show help for your role"},
+    {"command": "help",               "description": "📚 Open category help"},
     {"command": "hr",                 "description": "🆔 Get profile or group information"},
     {"command": "hstats",             "description": "📊 Show moderation stats"},
     {"command": "hmodinfo",           "description": "👮 View moderator information"},
@@ -185,6 +187,20 @@ BOT_COMMANDS = [
     {"command": "setrules",           "description": "📜 Configure group rules"},
     {"command": "report",             "description": "🚨 Report a message to admins"},
     {"command": "features",           "description": "🛡️ View SentriX features"},
+    {"command": "about",              "description": "ℹ️ About SentriX"},
+    {"command": "ping",               "description": "🏓 Check bot status"},
+    {"command": "setup",              "description": "🛠️ Open group setup wizard"},
+    {"command": "reset",              "description": "♻️ Reset SentriX group setup"},
+    {"command": "language",           "description": "🌐 Set group language"},
+    {"command": "antispam",           "description": "🚫 Toggle anti-spam"},
+    {"command": "antiraid",           "description": "🚨 Toggle anti-raid"},
+    {"command": "setflood",           "description": "🌊 Configure flood limits"},
+    {"command": "setlog",             "description": "📢 Configure the log channel"},
+    {"command": "unsetlog",           "description": "📢 Remove the log channel"},
+    {"command": "logchannel",         "description": "📢 Show the log channel"},
+    {"command": "logsettings",        "description": "📢 Show logging settings"},
+    {"command": "connection",         "description": "🔗 Show connection help"},
+    {"command": "info",               "description": "📊 Show group information"},
     {"command": "custom",             "description": "🧩 Create a custom command"},
     {"command": "customcommands",     "description": "🧩 List custom commands"},
     {"command": "stopall",            "description": "🧹 Remove all keyword filters"},
@@ -221,6 +237,8 @@ MODERATION_COMMANDS = {
     "hbroadcast",
     "hpurge", "hstopall", "hcustom", "hcustomcommands", "hdelcustom", "hreport", "hcaptcha",
     "settings", "admins", "setadmin", "removeadmin",
+    "setup", "reset", "language", "antispam", "antiraid", "setflood",
+    "setlog", "unsetlog", "logchannel", "logsettings", "connection", "info",
 }
 ACTION_LOG_AUTO_DELETE = 600  # seconds
 
@@ -3777,7 +3795,7 @@ async def handle_message(bot: Client, msg: dict):
             await reply_text(err)
             return
 
-        if raw_cmd in {"features"} or (raw_cmd == "start" and not args):
+        if raw_cmd in {"features", "help", "about", "ping"} or (raw_cmd == "start" and not args):
             result = await _sentrix_registry.dispatch(raw_cmd, args, _sentrix_context(bot, msg))
             if result.handled:
                 await reply_text(result.text or "", markup=result.markup)
@@ -3796,7 +3814,12 @@ async def handle_message(bot: Client, msg: dict):
                 )
             action_chat_id = resolved
 
-        if raw_cmd in {"settings", "admins", "setadmin", "removeadmin"}:
+        modular_commands = {
+            "settings", "admins", "setadmin", "removeadmin", "setup", "reset", "language",
+            "antispam", "antiraid", "setflood", "setlog", "unsetlog", "logchannel", "logsettings",
+            "connection", "info",
+        }
+        if raw_cmd in modular_commands:
             scoped_message = dict(msg)
             scoped_message["chat"] = dict(msg.get("chat", {}))
             scoped_message["chat"]["id"] = action_chat_id
@@ -5784,6 +5807,26 @@ async def handle_callback(bot: Client, cb: dict):
                 await handle_ttt_callback(cb_id, data, uid, from_user, chat_id, message)
                 return
 
+        if data.startswith("sxhelp_"):
+            category = data.split("_", 1)[1]
+            text = category_text(category)
+            if not text:
+                return await tg_answer_cb(cb_id, "❌ Unknown help category.", alert=True)
+            await tg_edit_text(chat_id, message.get("message_id"), text, markup=help_markup())
+            return await tg_answer_cb(cb_id, "✅ Help opened.")
+
+        if data == "sxsetup_continue":
+            if not is_owner(uid) and not await is_chat_admin(bot, chat_id, uid):
+                return await tg_answer_cb(cb_id, "❌ Administrator permission required.", alert=True)
+            await tg_edit_text(
+                chat_id,
+                message.get("message_id"),
+                "🛡️ **SentriX Setup**\n\n" + "\n".join(f"✅ {step}" for step in STEPS) + "\n\nUse `/settings` to configure each section.",
+                markup=settings_markup(),
+            )
+            await _sentrix_admin_log().record("SETUP", user=f"`{uid}`", admin=f"`{uid}`", reason="Completed setup wizard")
+            return await tg_answer_cb(cb_id, "✅ Setup opened.")
+
         if data.startswith("settings_"):
             if not is_owner(uid) and not await is_chat_admin(bot, chat_id, uid):
                 return await tg_answer_cb(cb_id, "❌ Administrator permission required.", alert=True)
@@ -5962,11 +6005,7 @@ async def handle_callback(bot: Client, cb: dict):
 
         if data == "start_help":
             await tg_answer_cb(cb_id, "Opening help...")
-            await tg_send(
-                chat_id,
-                moderation_help_text("home", uid) if is_authorized(uid) else role_help_text(uid),
-                markup=moderation_help_markup("home") if is_authorized(uid) else None,
-            )
+            await tg_send(chat_id, help_text(), markup=help_markup())
             return
 
         if data == "start_features":

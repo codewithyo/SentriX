@@ -30,6 +30,25 @@
 - ✅ **Complete Audit Trail** - Every action logged and traceable
 - ✅ **Security First** - Authentication, authorization, and anti-nuke protection
 
+## 🧩 SentriX Modular Architecture
+
+New feature work belongs in the `sentrix/` package. Modules are async, dependency-injected, and can be tested without Telegram or MongoDB:
+
+| Module | Responsibility |
+|--------|----------------|
+| `start.py` | Welcome screen, feature discovery, inline keyboards |
+| `admin.py` | Administrator actions and permission contracts |
+| `moderation.py` | User moderation command contracts |
+| `antispam.py` | Flood, repeat, link, and mention decisions |
+| `filters.py` | Keyword filter persistence and management |
+| `welcome.py` | Welcome and goodbye configuration |
+| `locks.py` | Per-group content lock state |
+| `notes.py` | Persistent group notes |
+| `verification.py` | CAPTCHA and member verification settings |
+| `settings.py` | Generic per-group settings |
+
+Shared contracts live in `sentrix/context.py`, `sentrix/database.py`, `sentrix/config.py`, and `sentrix/utils.py`. `sentrix/registry.py` provides isolated command dispatch and error handling. `sentrix/application.py` is the compatibility runtime for the remaining legacy handlers and persisted data; `api/index.py` is intentionally only the ASGI import surface.
+
 ---
 
 ## 🚀 Key Highlights

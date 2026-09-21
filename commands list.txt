@@ -1,43 +1,92 @@
-Supported bot commands
+SentriX command reference
 
-General
-- /start - Start the bot and view the welcome message
-- /help - Show the help screen for your role
-- /hr - Get profile or group information
-- /hstats - Show moderation statistics
-- /hmodinfo - View moderator information
+Telegram Bot Menu (only these four commands)
+- /start - Open the SentriX welcome screen
+- /help - Open the interactive Help Center
+- /ping - Check bot status
+- /settings - Open the inline group settings dashboard
 
-Notes and filters
-- /notes - List saved notes
-- /save <name> <text> - Save a note
-- /get <name> - Retrieve a note
-- /clear <name> - Delete a note
-- /filters - List active filters
-- /filter <keyword> <response> - Add a filter
-- /stop <keyword> - Remove a filter
+All other commands are available from /help category buttons.
 
-Connections and broadcast
-- /connections - Manage connected groups
-- /connect <chat_id> - Connect PM to a group
-- /disconnect [chat_id|all] - Disconnect from a group
-- /allowconnections yes|no - Allow or block PM connections
-- /hbroadcast - Use in bot DM to broadcast a message to all connected groups or to one specific connected group; the bot will ask you to reply with the message
+Bot and information
+- /about
+- /features
+- /id [user]
+- /info
+- /stats
+- /admins
+- /adminlist
+- /report [reason]
 
-Moderation
-- /hauth <user_id> - Authorize a moderator (Owner)
-- /hgrant <user_id> - Grant permissions (Owner)
-- /hrevoke <perm|all> <user_id> - Revoke permissions (Owner)
-- /hfreeze <user_id> - Freeze a moderator (Owner)
-- /hunfreeze <user_id> - Unfreeze a moderator (Owner)
-- /hbadge <user_id> <badge> - Set a moderator badge (Owner)
-- /hwarnconfig - Configure warning actions (Owner)
-- /hban /ban /tban /hkick /kick /kickme /hmute /mute /tmute /hunban /unban /hunmute /unmute - Moderate users
-- /promote /demote /adminlist /admincache /anonadmin /adminerror /hauth /hgrant /hrevoke /hfreeze /hunfreeze /hprotect /hunprotect - Manage admins and protection
-- /hwarn /warns /resetwarns - Manage warnings
-- /hdel /hprotect /hunprotect /hcase /happeal - Handle moderation actions
+Administration and moderation
+- /promote <user>
+- /demote <user>
+- /ban <user> [duration] [reason]
+- /unban <user>
+- /kick <user> [reason]
+- /kickme
+- /mute <user> [duration] [reason]
+- /unmute <user>
+- /warn <user> [reason]
+- /unwarn <user>
+- /warnings [user]
+- /purge [count]
+- /pin and /unpin
+- /case <case_id>
+- /mod and /modinfo
+- /auth, /unauth, /grant, /revoke
+- /freeze, /unfreeze, /badge
+- /protect, /unprotect, /protected
+- /warnconfig and /warnmode
 
-Games
-- /ttt - Start a Tic-Tac-Toe match
-- /tttleaderboard - View the leaderboard
-- /tttmystats - View your game stats
-- /tttend - Forfeit the active game
+Protection
+- /antispam [on|off]
+- /antiraid [on|off]
+- /captcha [on|off]
+- /setflood <messages> [seconds]
+- /lock <type> and /unlock <type>
+- /locktype, /locktypes, /locktypelist, /locklist
+- /lockbot, /locklink, /unlockbot, /unlocklink
+- /addblocklist, /blocklist, /deleteblocklist, /blocklists, /blocklistmode
+- /bot on|off
+
+Welcome and rules
+- /welcome and /setwelcome <text>
+- /goodbye and /setgoodbye <text>
+- /rules and /setrules <text>
+- /setup, /reset, /language
+
+Filters and notes
+- /filter <keyword> <response>
+- /filters
+- /stop <keyword>
+- /stopall
+- /save <name> <text>
+- /get <name>
+- /notes
+- /clear <name>
+- /custom <name> <response>
+- /customcommands
+- /delcustom <name>
+
+Logging and connections
+- /setlog <channel_id> or forward a log-channel message
+- /unsetlog
+- /logchannel
+- /logsettings
+- /connect <chat_id>
+- /connections
+- /connection
+- /disconnect [chat_id|all]
+- /allowconnections on|off
+- /broadcast
+
+Games and appeals
+- /ttt
+- /tttleaderboard
+- /tttmystats
+- /tttend
+- /appeal <case_id> <message>
+
+Legacy h-prefixed commands are retired and are no longer registered or accepted.
+Use /help to browse syntax, permissions, examples, notes, and related commands.

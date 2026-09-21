@@ -217,14 +217,14 @@ Fallback Files (Recovery)
 ### ⚙️ System Configuration
 
 **Moderation Settings**
-- `/hwarnconfig threshold <n>` - Set warning limit
-- `/hwarnconfig action [ban|mute|kick]` - Auto-action on threshold
-- `/hwarnconfig duration [30m|2h|1d]` - Action duration
+- `/warnconfig threshold <n>` - Set warning limit
+- `/warnconfig action [ban|mute|kick]` - Auto-action on threshold
+- `/warnconfig duration [30m|2h|1d]` - Action duration
 
 **Welcome & Rules**
-- `/hsetwelcome <text>` - Set welcome message
-- `/hsetgoodbye <text>` - Set goodbye message
-- `/hsetrules <text>` - Set group rules
+- `/setwelcome <text>` - Set welcome message
+- `/setgoodbye <text>` - Set goodbye message
+- `/setrules <text>` - Set group rules
 - Variables: `{mention}`, `{name}`, `{id}`
 
 ---
@@ -233,12 +233,12 @@ Fallback Files (Recovery)
 
 Use the bot for moderation, note management, filters, multi-group control, broadcasts, and games.
 
-- Moderation: /hban, /ban, /tban, /hkick, /kick, /kickme, /hmute, /mute, /tmute, /hunban, /unban, /hunmute, /unmute, /hwarn, /hdel
-- Admin tools: /promote, /demote, /adminlist, /admincache, /anonadmin, /adminerror, /hauth, /hgrant, /hrevoke, /hfreeze, /hunfreeze, /hprotect, /hunprotect
-- Notes: /hsave, /hget, /hclear, /hnotes
-- Filters: /hfilter, /hfilters, /hstop
-- Connections: /hconnect, /hconnections, /hdisconnect, /hallowconnections, /hbroadcast
-- Owner tools: /hauth, /hgrant, /hrevoke, /hfreeze, /hunfreeze, /hbadge, /hwarnconfig
+- Moderation: /ban, /ban, /tban, /kick, /kick, /kickme, /mute, /mute, /tmute, /unban, /unban, /unmute, /unmute, /warn, /del
+- Admin tools: /promote, /demote, /adminlist, /admincache, /anonadmin, /adminerror, /auth, /grant, /revoke, /freeze, /unfreeze, /protect, /unprotect
+- Notes: /save, /get, /clear, /notes
+- Filters: /filter, /filters, /stop
+- Connections: /connect, /connections, /disconnect, /allowconnections, /broadcast
+- Owner tools: /auth, /grant, /revoke, /freeze, /unfreeze, /badge, /warnconfig
 - Games: /ttt, /tttleaderboard, /tttmystats, /tttend
 
 ---
@@ -318,11 +318,11 @@ Most commands support **two usage modes**:
 
 ```bash
 # Preferred: Reply to target message
-(reply) → /hban 2h spam
+(reply) → /ban 2h spam
 
 # Direct: Pass user ID or @username
-/hban @username 2h spam
-/hban 123456789 2h spam
+/ban @username 2h spam
+/ban 123456789 2h spam
 ```
 
 ### 👤 User Commands (Everyone)
@@ -331,69 +331,69 @@ Most commands support **two usage modes**:
 |---------|-------------|-------|
 | `/start` | Bot welcome & features | `/start` |
 | `/help` | Interactive command menu | `/help` |
-| `/hr` | View profile or group information | `/hr @user` or `/hr me` |
-| `/hstats` | Group moderation stats | `/hstats` |
-| `/hmodinfo` | View moderator information | `/hmodinfo` |
+| `/id` | View profile or group information | `/id @user` or `/id me` |
+| `/stats` | Group moderation stats | `/stats` |
+| `/modinfo` | View moderator information | `/modinfo` |
 | `/warns` | View warnings | `/warns @user` |
-| `/happeal` | Appeal a moderation action | `/happeal <case_id> <reason>` |
+| `/appeal` | Appeal a moderation action | `/appeal <case_id> <reason>` |
 
 ### 🚫 Moderation Commands (Moderators)
 
 | Emoji | Command | Description | Duration | Example |
 |-------|---------|-------------|----------|---------|
-| 🚫 | `/hban` / `/ban` / `/tban` | Ban or temporarily ban user | `[duration]` | `/ban @user 7d spam` |
-| ✅ | `/hunban` / `/unban` | Unban user | — | `/unban @user` |
-| 👢 | `/hkick` / `/kick` | Kick user | — | `/kick @user spam` |
+| 🚫 | `/ban` / `/ban` / `/tban` | Ban or temporarily ban user | `[duration]` | `/ban @user 7d spam` |
+| ✅ | `/unban` / `/unban` | Unban user | — | `/unban @user` |
+| 👢 | `/kick` / `/kick` | Kick user | — | `/kick @user spam` |
 | 🙋 | `/kickme` | Kick yourself from the group | — | `/kickme` |
-| 🔇 | `/hmute` / `/mute` / `/tmute` | Mute or temporarily mute user | `[duration]` | `/tmute @user 2h` |
-| 🔊 | `/hunmute` / `/unmute` | Unmute user | — | `/unmute @user` |
-| ⚠️ | `/hwarn` | Issue warning | — | `/hwarn @user off-topic` |
-| ♻️ | `/hresetwarns` | Reset all warnings | — | `/hresetwarns @user` |
+| 🔇 | `/mute` / `/mute` / `/tmute` | Mute or temporarily mute user | `[duration]` | `/tmute @user 2h` |
+| 🔊 | `/unmute` / `/unmute` | Unmute user | — | `/unmute @user` |
+| ⚠️ | `/warn` | Issue warning | — | `/warn @user off-topic` |
+| ♻️ | `/resetwarns` | Reset all warnings | — | `/resetwarns @user` |
 | 📌 | `/pin` | Pin message | — | `/pin` (reply) |
 | 📌 | `/unpin` | Unpin message | — | `/unpin` |
-| 📝 | `/hdel` | Delete message | — | `/hdel <msg_id>` |
-| 👥 | `/hmodinfo` | Show moderator info | — | `/hmodinfo` |
-| 📋 | `/hcase` | View case details | — | `/hcase <case_id>` |
+| 📝 | `/del` | Delete message | — | `/del <msg_id>` |
+| 👥 | `/modinfo` | Show moderator info | — | `/modinfo` |
+| 📋 | `/case` | View case details | — | `/case <case_id>` |
 
 ### 🔐 Owner Commands (Admin Only)
 
 | Emoji | Command | Description | Example |
 |-------|---------|-------------|---------|
-| 🛡️ | `/hprotect` | Protect from moderation | `/hprotect @user` |
-| 🔓 | `/hunprotect` | Remove protection | `/hunprotect @user` |
-| 👥 | `/hauth` | Authorize moderator | `/hauth 123456789` |
-| 🚫👥 | `/hunauth` | Remove authorization | `/hunauth 123456789` |
-| 🔧 | `/hgrant` | Grant permission | `/hgrant 123456789` |
-| 🛠️ | `/hrevoke` | Revoke permission | `/hrevoke ban 123456789` |
-| ❄️ | `/hfreeze` | Freeze moderator | `/hfreeze 123456789` |
-| 🔥 | `/hunfreeze` | Unfreeze moderator | `/hunfreeze 123456789` |
-| 🏷️ | `/hbadge` | Set moderator badge | `/hbadge 123456789 🟢 Mod` |
-| ⚙️ | `/hwarnconfig` | Configure warn threshold/action | `/hwarnconfig threshold 3` |
-| 💾 | `/hsave` | Save group note | `/hsave rules Welcome!` |
-| 📖 | `/hget` | Get a group note | `/hget rules` or `#rules` |
-| 🗑️ | `/hclear` | Delete a group note | `/hclear rules` |
+| 🛡️ | `/protect` | Protect from moderation | `/protect @user` |
+| 🔓 | `/unprotect` | Remove protection | `/unprotect @user` |
+| 👥 | `/auth` | Authorize moderator | `/auth 123456789` |
+| 🚫👥 | `/unauth` | Remove authorization | `/unauth 123456789` |
+| 🔧 | `/grant` | Grant permission | `/grant 123456789` |
+| 🛠️ | `/revoke` | Revoke permission | `/revoke ban 123456789` |
+| ❄️ | `/freeze` | Freeze moderator | `/freeze 123456789` |
+| 🔥 | `/unfreeze` | Unfreeze moderator | `/unfreeze 123456789` |
+| 🏷️ | `/badge` | Set moderator badge | `/badge 123456789 🟢 Mod` |
+| ⚙️ | `/warnconfig` | Configure warn threshold/action | `/warnconfig threshold 3` |
+| 💾 | `/save` | Save group note | `/save rules Welcome!` |
+| 📖 | `/get` | Get a group note | `/get rules` or `#rules` |
+| 🗑️ | `/clear` | Delete a group note | `/clear rules` |
 
 ### 🔍 Filter & Blocklist Commands
 
 | Emoji | Command | Description | Example |
 |-------|---------|-------------|---------|
-| ➕ | `/hfilter` | Add an auto-reply filter | `/hfilter spam Ban warned` |
-| 🔍 | `/hfilters` | List all filters | `/hfilters` |
-| ⛔ | `/hstop` | Remove a filter | `/hstop spam` |
-| 🔒 | `/haddblocklist` | Add a blocked keyword | `/haddblocklist bad-word` |
-| ❌ | `/hdeleteblocklist` | Remove a blocklist keyword | `/hdeleteblocklist bad-word` |
-| 📋 | `/hblocklists` | List blocked keywords | `/hblocklists` |
-| ⚙️ | `/hblocklistmode` | Set the blocklist action | `/hblocklistmode ban` |
+| ➕ | `/filter` | Add an auto-reply filter | `/filter spam Ban warned` |
+| 🔍 | `/filters` | List all filters | `/filters` |
+| ⛔ | `/stop` | Remove a filter | `/stop spam` |
+| 🔒 | `/addblocklist` | Add a blocked keyword | `/addblocklist bad-word` |
+| ❌ | `/deleteblocklist` | Remove a blocklist keyword | `/deleteblocklist bad-word` |
+| 📋 | `/blocklists` | List blocked keywords | `/blocklists` |
+| ⚙️ | `/blocklistmode` | Set the blocklist action | `/blocklistmode ban` |
 
 ### 🔗 Connection & Broadcast Commands
 
 | Emoji | Command | Description | Usage |
 |-------|---------|-------------|-------|
-| 🔗 | `/hconnect` | Connect a group to PM management | `/hconnect <chat_id>` |
-| 🔁 | `/hconnections` | View and switch connected groups | `/hconnections` |
-| 🔌 | `/hdisconnect` | Disconnect a group | `/hdisconnect` or `/hdisconnect all` |
-| 🔐 | `/hallowconnections` | Control connection permissions | `/hallowconnections yes|no` |
-| 📢 | `/hbroadcast` | Broadcast a message from bot DM to connected groups | `/hbroadcast` |
+| 🔗 | `/connect` | Connect a group to PM management | `/connect <chat_id>` |
+| 🔁 | `/connections` | View and switch connected groups | `/connections` |
+| 🔌 | `/disconnect` | Disconnect a group | `/disconnect` or `/disconnect all` |
+| 🔐 | `/allowconnections` | Control connection permissions | `/allowconnections yes|no` |
+| 📢 | `/broadcast` | Broadcast a message from bot DM to connected groups | `/broadcast` |
 
 ### 🎮 Game Commands
 
@@ -408,12 +408,12 @@ Most commands support **two usage modes**:
 
 | Emoji | Command | Description | Example |
 |-------|---------|-------------|---------|
-| 🎯 | `/hwarnconfig threshold` | Set warn limit | `/hwarnconfig threshold 3` |
-| 🎯 | `/hwarnconfig action` | Auto-action type | `/hwarnconfig action ban` |
-| ⏱️ | `/hwarnconfig duration` | Action duration | `/hwarnconfig duration 1d` |
-| 👋 | `/hsetwelcome` | Welcome message | `/hsetwelcome Welcome {name}!` |
-| 👋 | `/hsetgoodbye` | Goodbye message | `/hsetgoodbye See you {name}!` |
-| 📜 | `/hsetrules` | Set group rules | `/hsetrules No spam...` |
+| 🎯 | `/warnconfig threshold` | Set warn limit | `/warnconfig threshold 3` |
+| 🎯 | `/warnconfig action` | Auto-action type | `/warnconfig action ban` |
+| ⏱️ | `/warnconfig duration` | Action duration | `/warnconfig duration 1d` |
+| 👋 | `/setwelcome` | Welcome message | `/setwelcome Welcome {name}!` |
+| 👋 | `/setgoodbye` | Goodbye message | `/setgoodbye See you {name}!` |
+| 📜 | `/setrules` | Set group rules | `/setrules No spam...` |
 
 ---
 
@@ -523,7 +523,7 @@ Bot will start on `http://localhost:8000`
 # 2. Add bot to your group as admin
 
 # 3. Authorize first moderator (as owner)
-/hauth <moderator_user_id>
+/auth <moderator_user_id>
 
 # 4. Start moderating!
 /help
@@ -631,13 +631,13 @@ APP_URL                         # Application URL
 
 ```bash
 # Set warn threshold (auto-action triggers)
-/hwarnconfig threshold 3
+/warnconfig threshold 3
 
 # Choose auto-action type
-/hwarnconfig action ban
+/warnconfig action ban
 
 # Set action duration
-/hwarnconfig duration 1d
+/warnconfig duration 1d
 ```
 
 ---
@@ -660,9 +660,9 @@ APP_URL                         # Application URL
 ### Welcome Message Variables
 
 ```bash
-/hsetwelcome Welcome {name}! 👋
-/hsetwelcome Your ID: {id}
-/hsetwelcome Please mention {mention}
+/setwelcome Welcome {name}! 👋
+/setwelcome Your ID: {id}
+/setwelcome Please mention {mention}
 ```
 
 Variables:
@@ -673,8 +673,8 @@ Variables:
 ### Moderator Badges
 
 ```bash
-/hbadge 123456789 🟢 Senior Mod
-/hbadge 987654321 🔵 Junior Mod
+/badge 123456789 🟢 Senior Mod
+/badge 987654321 🔵 Junior Mod
 ```
 
 ### Frozen Moderators
@@ -682,10 +682,10 @@ Variables:
 Freeze moderator to prevent accidental actions:
 
 ```bash
-/hfreeze 123456789
+/freeze 123456789
 
 # Later unfreeze when ready
-/hunfreeze 123456789
+/unfreeze 123456789
 ```
 
 ---
@@ -725,7 +725,7 @@ Check startup logs for:
 1. **Never share credentials** - Keep `.env` file private
 2. **Use HTTPS** - Enable SSL in production
 3. **Rate limiting** - Built-in anti-spam protection
-4. **Audit logs** - Review `/hcase` logs regularly
+4. **Audit logs** - Review `/case` logs regularly
 5. **Permission scoping** - Grant minimal required permissions
 6. **Regular backups** - Automated MongoDB + local fallbacks
 7. **Anti-nuke** - Freeze suspicious moderators
@@ -756,7 +756,7 @@ curl http://localhost:8000/api/setup_webhook
 
 ### Command Not Working
 
-1. Verify user permissions: `/hmodinfo`
+1. Verify user permissions: `/modinfo`
 2. Check command syntax: `/help`
 3. Verify bot admin status in group
 4. Check bot is added to group

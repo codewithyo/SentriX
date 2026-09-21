@@ -12,18 +12,18 @@
 ### Moderation Commands (Moderators)
 | Command | Description | Usage |
 |---------|-------------|-------|
-| `/hban` | Ban user from group | `/hban @user [duration] [reason]` |
-| `/hkick` | Kick user from group | `/hkick @user [reason]` |
-| `/hmute` | Mute user in group | `/hmute @user [duration] [reason]` |
+| `/ban` | Ban user from group | `/ban @user [duration] [reason]` |
+| `/kick` | Kick user from group | `/kick @user [reason]` |
+| `/mute` | Mute user in group | `/mute @user [duration] [reason]` |
 | `/pin` | Pin replied message | `/pin` (reply only) |
 | `/unpin` | Unpin current pinned message | `/unpin` |
 | `/adminlist` | Show all group admins | `/adminlist` |
 | `/zombies` | Scan and kick deleted/bot accounts | `/zombies` |
-| `/hwarn` | Issue warning | `/hwarn @user [reason]` |
-| `/hdel` | Delete message | `/hdel <message_id>` |
-| `/hcase` | View case details | `/hcase <case_id>` |
-| `/hmodinfo` | View moderator info | `/hmodinfo [@user]` |
-| `/hkick` | Kick user from group | `/hkick @user [reason]` |
+| `/warn` | Issue warning | `/warn @user [reason]` |
+| `/del` | Delete message | `/del <message_id>` |
+| `/case` | View case details | `/case <case_id>` |
+| `/modinfo` | View moderator info | `/modinfo [@user]` |
+| `/kick` | Kick user from group | `/kick @user [reason]` |
 | `/pin` | Pin replied message | `/pin` (reply only) |
 | `/unpin` | Unpin current pinned message | `/unpin` |
 | `/adminlist` | Show all group admins | `/adminlist` |
@@ -32,15 +32,15 @@
 ### Owner Commands (Administrator Only)
 | Command | Description | Usage |
 |---------|-------------|-------|
-| `/hauth` | Authorize moderator | `/hauth <user_id>` |
-| `/hgrant` | Grant permission | `/hgrant <permission> <user_id>` |
-| `/hrevoke` | Revoke permission | `/hrevoke <permission> <user_id>` |
-| `/hprotect` | Protect user | `/hprotect <user_id>` |
+| `/auth` | Authorize moderator | `/auth <user_id>` |
+| `/grant` | Grant permission | `/grant <permission> <user_id>` |
+| `/revoke` | Revoke permission | `/revoke <permission> <user_id>` |
+| `/protect` | Protect user | `/protect <user_id>` |
 
 ### Appeals (Users)
 | Command | Description | Usage |
 |---------|-------------|-------|
-| `/happeal` | Appeal moderation | `/happeal <case_id> <message>` (DM only) |
+| `/appeal` | Appeal moderation | `/appeal <case_id> <message>` (DM only) |
 
 ## 🎯 Key Features
 
@@ -94,30 +94,30 @@
 
 ### 2. Authorize Moderators (Owner)
 ```
-/hauth 123456789      # Authorize a moderator
-/hgrant ban 123456789 # Give ban permission
-/hgrant warn 123456789 # Give warn permission
+/auth 123456789      # Authorize a moderator
+/grant ban 123456789 # Give ban permission
+/grant warn 123456789 # Give warn permission
 ```
 
 ### 3. Use Moderation Commands (Moderators)
 ```
-/hban @spammer 30m spam              # Ban for 30 minutes
-/hmute @user 1h abuse                # Mute for 1 hour
-/hwarn @user off-topic               # Issue warning
-/hdel 45678901234                    # Delete message
+/ban @spammer 30m spam              # Ban for 30 minutes
+/mute @user 1h abuse                # Mute for 1 hour
+/warn @user off-topic               # Issue warning
+/del 45678901234                    # Delete message
 ```
 
 ### 4. Monitor Cases (All Mods)
 ```
-/hcase 5              # View case #5 details
-/hmodinfo            # See your permissions
+/case 5              # View case #5 details
+/modinfo            # See your permissions
 /id me               # Get your profile
 ```
 
 ### 5. Appeal Actions (Users)
 ```
 # In bot DM:
-/happeal 5 I think this was unfair   # Appeal case #5
+/appeal 5 I think this was unfair   # Appeal case #5
 ```
 
 ## 📊 Performance Metrics

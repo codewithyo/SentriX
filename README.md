@@ -1,18 +1,18 @@
-<!-- Header Banner -->
 <div align="center">
 
-# 🛡️ **SentriX Prime v2.0**
-## Professional Group Management Bot for Telegram
+# 🛡️ SentriX
+
+**Professional Telegram Group Management & Moderation Bot**
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Pyrogram](https://img.shields.io/badge/Pyrogram-2.0-00A3E0?style=for-the-badge&logo=telegram)](https://docs.pyrogram.org)
+[![Pyrogram](https://img.shields.io/badge/Pyrogram-2.0.106-00A3E0?style=for-the-badge&logo=telegram)](https://docs.pyrogram.org)
 [![MongoDB](https://img.shields.io/badge/MongoDB-4.0%2B-13AA52?style=for-the-badge&logo=mongodb)](https://mongodb.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-**Advanced automation, intelligent security, and powerful utilities designed for professional communities.**
+*Moderate Smarter. Stay Safer.*
 
-[🚀 Quick Start](#-quick-start) • [📋 Features](#-core-features) • [📖 Commands](#-comprehensive-command-reference) • [⚙️ Deploy](#-deployment) • [💬 Support](#-support)
+[🚀 Quick Start](#-quick-start) • [✨ Features](#-features) • [📖 Commands](#-commands) • [⚙️ Deploy](#️-deployment) • [💬 Support](#-support)
 
 </div>
 
@@ -20,23 +20,96 @@
 
 ## 📌 Overview
 
-**SentriX Prime** is an enterprise-grade Telegram group moderation bot built with **FastAPI** and **Pyrogram**. It provides:
+**SentriX** is an enterprise-grade Telegram group moderation bot built with **FastAPI** and **Pyrogram**. It provides intelligent moderation, multi-group management, and a complete audit trail — all backed by MongoDB.
 
-- ✅ **Intelligent Moderation** - Smart auto-enforcement, warnings, and discipline
-- ✅ **Multi-Group Management** - Manage unlimited groups simultaneously
-- ✅ **Enterprise Persistence** - MongoDB + JSON fallback + auto-backup
-- ✅ **Performance Optimized** - 60-90% faster webhook handling with intelligent caching
-- ✅ **Professional Interface** - Clean, emoji-enhanced messages with inline buttons
-- ✅ **Complete Audit Trail** - Every action logged and traceable
-- ✅ **Security First** - Authentication, authorization, and anti-nuke protection
+- ✅ **Intelligent Moderation** — Progressive discipline with auto-enforcement
+- ✅ **Multi-Group Management** — Manage unlimited groups simultaneously
+- ✅ **Enterprise Persistence** — MongoDB + JSON fallback + auto-backup
+- ✅ **Performance Optimized** — Async processing with intelligent caching
+- ✅ **Complete Audit Trail** — Every action logged and traceable
+- ✅ **Security First** — Auth, authorization, and anti-nuke protection
 
-## 🧩 SentriX Modular Architecture
+---
 
-New feature work belongs in the `sentrix/` package. Modules are async, dependency-injected, and can be tested without Telegram or MongoDB:
+## ✨ Features
+
+<details>
+<summary><b>🛡️ Moderation</b></summary>
+
+- Progressive Discipline: Warnings → Mute → Ban
+- Timed actions with flexible durations (`30m`, `2h`, `1d`, `7d`)
+- Auto-action on warning threshold (configurable)
+- Case management — every action is traceable and appealable
+- Protected users — prevent important members from accidental moderation
+
+</details>
+
+<details>
+<summary><b>🔐 Permission System</b></summary>
+
+- Role-based access: Owner → Moderator → User
+- Fine-grained permissions: `ban` · `unban` · `mute` · `unmute` · `kick` · `warn` · `delete` · `pin`
+- Moderator freeze — disable actions temporarily (anti-nuke)
+- Per-group permission isolation
+
+</details>
+
+<details>
+<summary><b>📊 Data Persistence</b></summary>
+
+```
+Local Cache (5min TTL)
+        ↓
+Local JSON Files (Primary)
+        ↓
+MongoDB (Authoritative)
+        ↓
+Fallback Files (Recovery)
+```
+
+- Auto-sync with MongoDB on startup
+- Atomic writes with fallback protection
+- Per-group data isolation
+- Auto-bootstrap on first group connection
+
+</details>
+
+<details>
+<summary><b>📝 Filters, Notes & Blocklist</b></summary>
+
+- Keyword, exact-match, start-of-message, and regex filters
+- Automatic responses on filter match
+- Group notes with hashtag triggers (`#notename`)
+- Blocklist with configurable actions (`warn`, `mute`, `ban`)
+
+</details>
+
+<details>
+<summary><b>👋 Welcome & Logging</b></summary>
+
+- Custom welcome and goodbye messages with variables (`{name}`, `{mention}`, `{id}`, `{chat}`)
+- Dedicated log channel for every moderation event
+- Structured log format with user, admin, reason, and timestamp
+
+</details>
+
+<details>
+<summary><b>🎮 Games</b></summary>
+
+- Tic-Tac-Toe with custom board sizes (3×3 to 5×5)
+- Leaderboard and personal stats tracking
+
+</details>
+
+---
+
+## 🧩 Architecture
+
+The `sentrix/` package is the feature layer — async, dependency-injected, testable without Telegram or MongoDB.
 
 | Module | Responsibility |
 |--------|----------------|
-| `start.py` | Welcome screen, feature discovery, inline keyboards |
+| `start.py` | Welcome screen, inline keyboards |
 | `admin.py` | Administrator actions and permission contracts |
 | `moderation.py` | User moderation command contracts |
 | `antispam.py` | Flood, repeat, link, and mention decisions |
@@ -46,811 +119,431 @@ New feature work belongs in the `sentrix/` package. Modules are async, dependenc
 | `notes.py` | Persistent group notes |
 | `verification.py` | CAPTCHA and member verification settings |
 | `settings.py` | Generic per-group settings |
-| `help.py` | Category-based Rose-style help navigation |
+| `help.py` | Category-based help navigation |
 | `setup.py` | Interactive seven-step group setup wizard |
 | `logging_commands.py` | `/setlog`, `/unsetlog`, `/logchannel`, `/logsettings` |
 | `protection.py` | Anti-spam, anti-raid, and flood settings |
-| `connections.py` | Connection command surface |
+| `connections.py` | Multi-group connection surface |
 | `information.py` | Group and user information commands |
 
-Shared contracts live in `sentrix/context.py`, `sentrix/database.py`, `sentrix/config.py`, and `sentrix/utils.py`. `sentrix/registry.py` provides isolated command dispatch and error handling. `sentrix/application.py` is the compatibility runtime for the remaining legacy handlers and persisted data; `api/index.py` is intentionally only the ASGI import surface.
+> Shared contracts: `sentrix/context.py` · `sentrix/database.py` · `sentrix/config.py` · `sentrix/utils.py`  
+> `sentrix/registry.py` — isolated command dispatch and error handling  
+> `api/index.py` — ASGI import surface only
 
 ---
 
-## 🚀 Key Highlights
+## 📖 Commands
 
-| Feature | Benefit | Status |
-|---------|---------|--------|
-| **Smart Caching** | 5x faster permission checks | ⚡ 95% cache hit rate |
-| **Async Processing** | Non-blocking webhook handling | ⚡ 60-90% faster |
-| **MongoDB Persistence** | Data survives bot restarts | ✅ Auto-sync on startup |
-| **Request Deduplication** | Prevents duplicate actions | ✅ <1% duplicates |
-| **Parallel Processing** | Messages + callbacks handled simultaneously | ✅ 2-3x faster |
-| **Role-Based Permissions** | Fine-grained access control | ✅ 8+ permission types |
-| **Games System** | Tic-Tac-Toe with leaderboard | 🎮 Full stats tracking |
-| **Appeal System** | Users can dispute actions | 📋 Transparent moderation |
-
----
-
-## 💡 What's New in v2.0
-
-### 🔄 Recent Updates (This Session)
-
-1. **Broadcast Feature** ✅
-   - Send messages to all connected groups or specific group
-   - Two-step verification with inline buttons
-   - Clean message delivery without attribution
-
-2. **Performance Optimization** ✅
-   - 300-second cache TTL (5x improvement)
-   - Webhook request deduplication
-   - Parallel async message processing
-   - Exponential backoff retry logic
-   - New `/api/diagnostics` endpoint for monitoring
-
-3. **Professional UI** ✅
-   - Upgraded `/start` command with inline buttons
-   - Add bot to group directly from start message
-   - Developer contact buttons
-   - System status indicators
-
-4. **Advanced Features** ✅
-   - Admin group caching (24-hour TTL)
-   - Log group detection optimization
-   - Webhook setup with automatic retry
-   - Performance metrics tracking
-
-5. **Rose-Style Command System** ✅
-   - Category-based `/help` with inline navigation
-   - Interactive `/setup` wizard and `/settings` dashboard
-   - Dedicated log-channel commands and structured admin events
-   - SentriX-specific admins without Telegram admin privileges
-
----
-
-## 🎯 Core Features
-
-### 🛡️ Intelligent Moderation System
-
-**Progressive Discipline Framework**
-- ⚠️ **Warnings** - Track user violations with configurable thresholds
-- 🔇 **Mute** - Silence users temporarily (30m, 2h, 1d, etc.)
-- 🚫 **Ban** - Permanent or temporary removal with reasons
-- 👢 **Kick** - Immediate removal from group
-- 🔒 **Protection** - Prevent important members from accidental moderation
-
-**Timed Actions**
-- Support for flexible duration formats: `30m`, `2h`, `1d`, `7d`
-- Automatic action execution after timeout
-- Optional auto-action on warning threshold
-
-**Case Management**
-- Every moderation action creates a traceable case
-- Cases can be viewed, appealed, and audited
-- Complete action history for every user
-
-### 📊 Data Persistence & Backup
-
-**Multi-Layer Storage Architecture**
-```
-Local Cache (5min TTL)
-    ↓
-Local JSON Files (Primary)
-    ↓
-MongoDB (Authoritative)
-    ↓
-Fallback Files (Recovery)
-```
-
-- **Automatic Synchronization**: Startup syncs with MongoDB
-- **Data Integrity**: Atomic writes with fallback protection
-- **Per-Group Isolation**: Each chat has isolated data scope
-- **Auto-Bootstrap**: Group defaults created on first connection
-
-**Storage Includes**
-- Warnings and infractions
-- Notes and filters
-- Blocklists and custom rules
-- Cases and audit logs
-- User permissions and protection
-
-### 👥 Permission Management
-
-**Role-Based Access Control**
-- 👑 **Owner** - Full admin access, grant/revoke permissions
-- 👮 **Moderator** - Enforce rules, manage users
-- 🟢 **User** - View stats, appeal actions
-
-**Fine-Grained Permissions**
-- `ban` - Ban users
-- `unban` - Unban users
-- `mute` - Mute users
-- `unmute` - Unmute users
-- `kick` - Kick users
-- `warn` - Issue warnings
-- `delete` - Delete messages
-- `pin` - Pin/unpin messages
-
-**Anti-Nuke Protection**
-- Freeze moderator: disable actions temporarily
-- Action audit trail: track who did what
-- Owner notifications: alerts on suspicious activity
-
-### 🎮 Games & Entertainment
-
-**Tic-Tac-Toe**
-- Challenge other users: `/ttt @user [size]`
-- Custom board sizes (3x3 to 5x5)
-- Leaderboard tracking: `/tttleaderboard`
-- Personal stats: `/tttmystats`
-
-### 🔗 Multi-Group Management
-
-**Connection System**
-- `/connect <chat_id>` - Connect group for PM management
-- `/connections` - View/switch between groups
-- `/disconnect [all]` - Remove group connections
-- `/allowconnections` - Control connection permissions
-
-### 🔍 Filtering & Auto-Response
-
-**Text Filters**
-- `/filter <keyword> <response>` - Add auto-reply filter
-- `-exact` mode - Exact match only
-- `-start` mode - Start of message
-- `-regex` mode - Regex pattern matching
-
-**Blocklist System**
-- `/addblocklist <keyword>` - Add blocked keyword
-- Configurable actions: `warn`, `mute`, `ban`
-- Per-group keyword scoping
-
-### 📝 Note System
-
-**Group Notes & References**
-- `/save <name> <text>` - Save a note
-- `/get <name>` or `#name` - Retrieve note
-- `/notes` - List all group notes
-- `/clear <name>` - Delete note
-- Hashtag trigger: `#notename` automatically posts saved note
-
-### ⚙️ System Configuration
-
-**Moderation Settings**
-- `/warnconfig threshold <n>` - Set warning limit
-- `/warnconfig action [ban|mute|kick]` - Auto-action on threshold
-- `/warnconfig duration [30m|2h|1d]` - Action duration
-
-**Welcome & Rules**
-- `/setwelcome <text>` - Set welcome message
-- `/setgoodbye <text>` - Set goodbye message
-- `/setrules <text>` - Set group rules
-- Variables: `{mention}`, `{name}`, `{id}`
-
----
-
-## 📚 Quick Command Summary
-
-Use the bot for moderation, note management, filters, multi-group control, broadcasts, and games.
-
-- Moderation: /ban, /ban, /tban, /kick, /kick, /kickme, /mute, /mute, /tmute, /unban, /unban, /unmute, /unmute, /warn, /del
-- Admin tools: /promote, /demote, /adminlist, /admincache, /anonadmin, /adminerror, /auth, /grant, /revoke, /freeze, /unfreeze, /protect, /unprotect
-- Notes: /save, /get, /clear, /notes
-- Filters: /filter, /filters, /stop
-- Connections: /connect, /connections, /disconnect, /allowconnections, /broadcast
-- Owner tools: /auth, /grant, /revoke, /freeze, /unfreeze, /badge, /warnconfig
-- Games: /ttt, /tttleaderboard, /tttmystats, /tttend
-
----
-
-## 🛡️ Rose-Style Command Guide
-
-Plain commands are the recommended interface. Existing `h*` commands remain available as compatibility aliases.
-
-### 🤖 Bot
-
-| Command | Description |
-|---------|-------------|
-| `/start` | Open the SentriX welcome screen |
-| `/help` | Open category-based help |
-| `/about` | About SentriX |
-| `/ping` | Check bot availability |
-
-### 👮 Admin & Information
-
-`/promote`, `/demote`, `/ban`, `/unban`, `/kick`, `/mute`, `/unmute`, `/warn`, `/unwarn`, `/warnings`, `/purge`
-
-`/admins` lists SentriX-specific admins. `/setadmin <user_id>` and `/removeadmin <user_id>` manage bot permissions without changing Telegram roles. `/adminlist` continues to show Telegram group administrators.
-
-### 🛡️ Protection
-
-| Command | Description |
-|---------|-------------|
-| `/antispam [on|off]` | Toggle anti-spam protection |
-| `/antiraid [on|off]` | Toggle anti-raid protection |
-| `/captcha [on|off]` | Toggle member verification |
-| `/lock <type>` | Lock content types |
-| `/unlock <type>` | Remove a content lock |
-| `/setflood <messages> [seconds]` | Configure flood limits |
-
-### 👋 Welcome, Filters & Notes
-
-`/welcome`, `/setwelcome <text>`, `/goodbye`, `/setgoodbye <text>`
-
-`/filter <keyword> <response>`, `/filters`, `/stop <keyword>`, `/stopall`
-
-`/save <name> <text>`, `/get <name>`, `/notes`, `/clear <name>`
-
-### 📢 Logging
-
-`/setlog <channel_id>` configures the dedicated admin log channel. Admins can also forward a message from the desired channel and use `/setlog`.
-
-`/logchannel` shows the configured channel, `/unsetlog` removes it, and `/logsettings` shows enabled event types.
-
-SentriX logs moderation actions, filter triggers, member joins/leaves, settings changes, and SentriX-admin changes in a structured format:
-
-```text
-🛡️ BAN
-
-User: @username
-Admin: @admin
-Reason: Spam
-Time: 14:32
-```
-
-### ⚙️ Group Setup & Connections
-
-`/setup` opens the interactive setup wizard for Welcome, Rules, Verification, Anti-Spam, Filters, Logging, and Locks.
-
-`/settings` opens the inline settings dashboard. `/rules`, `/setrules`, `/reset`, and `/language` manage group setup. `/connect`, `/disconnect`, and `/connection` manage PM group connections.
-
-### 📊 Information
-
-`/id`, `/info`, `/admins`, `/stats`, and `/report` provide group and moderation information.
-
----
-
-## 📖 Comprehensive Command Reference
-
-### 📋 Command Usage Pattern
-
-Most commands support **two usage modes**:
-
-```bash
-# Preferred: Reply to target message
-(reply) → /ban 2h spam
-
-# Direct: Pass user ID or @username
-/ban @username 2h spam
-/ban 123456789 2h spam
-```
-
-### 👤 User Commands (Everyone)
+### 👤 User Commands
 
 | Command | Description | Usage |
 |---------|-------------|-------|
-| `/start` | Bot welcome & features | `/start` |
-| `/help` | Interactive command menu | `/help` |
-| `/id` | View profile or group information | `/id @user` or `/id me` |
+| `/start` | Bot welcome screen | `/start` |
+| `/help` | Interactive help menu | `/help` |
+| `/id` | User or group info | `/id`, `/id @user`, `/id me` |
 | `/stats` | Group moderation stats | `/stats` |
-| `/modinfo` | View moderator information | `/modinfo` |
+| `/modinfo` | View moderator info | `/modinfo [@user]` |
 | `/warns` | View warnings | `/warns @user` |
-| `/appeal` | Appeal a moderation action | `/appeal <case_id> <reason>` |
+| `/appeal` | Appeal a moderation action (DM only) | `/appeal <case_id> <reason>` |
+| `/ping` | Check bot availability | `/ping` |
 
-### 🚫 Moderation Commands (Moderators)
+---
 
-| Emoji | Command | Description | Duration | Example |
-|-------|---------|-------------|----------|---------|
-| 🚫 | `/ban` / `/ban` / `/tban` | Ban or temporarily ban user | `[duration]` | `/ban @user 7d spam` |
-| ✅ | `/unban` / `/unban` | Unban user | — | `/unban @user` |
-| 👢 | `/kick` / `/kick` | Kick user | — | `/kick @user spam` |
-| 🙋 | `/kickme` | Kick yourself from the group | — | `/kickme` |
-| 🔇 | `/mute` / `/mute` / `/tmute` | Mute or temporarily mute user | `[duration]` | `/tmute @user 2h` |
-| 🔊 | `/unmute` / `/unmute` | Unmute user | — | `/unmute @user` |
-| ⚠️ | `/warn` | Issue warning | — | `/warn @user off-topic` |
-| ♻️ | `/resetwarns` | Reset all warnings | — | `/resetwarns @user` |
-| 📌 | `/pin` | Pin message | — | `/pin` (reply) |
-| 📌 | `/unpin` | Unpin message | — | `/unpin` |
-| 📝 | `/del` | Delete message | — | `/del <msg_id>` |
-| 👥 | `/modinfo` | Show moderator info | — | `/modinfo` |
-| 📋 | `/case` | View case details | — | `/case <case_id>` |
+### 🚫 Moderation Commands
 
-### 🔐 Owner Commands (Admin Only)
+> Most commands support **reply mode** (reply to a message) or **direct mode** (`/ban @user 2h reason`).
 
-| Emoji | Command | Description | Example |
-|-------|---------|-------------|---------|
-| 🛡️ | `/protect` | Protect from moderation | `/protect @user` |
-| 🔓 | `/unprotect` | Remove protection | `/unprotect @user` |
-| 👥 | `/auth` | Authorize moderator | `/auth 123456789` |
-| 🚫👥 | `/unauth` | Remove authorization | `/unauth 123456789` |
-| 🔧 | `/grant` | Grant permission | `/grant 123456789` |
-| 🛠️ | `/revoke` | Revoke permission | `/revoke ban 123456789` |
-| ❄️ | `/freeze` | Freeze moderator | `/freeze 123456789` |
-| 🔥 | `/unfreeze` | Unfreeze moderator | `/unfreeze 123456789` |
-| 🏷️ | `/badge` | Set moderator badge | `/badge 123456789 🟢 Mod` |
-| ⚙️ | `/warnconfig` | Configure warn threshold/action | `/warnconfig threshold 3` |
-| 💾 | `/save` | Save group note | `/save rules Welcome!` |
-| 📖 | `/get` | Get a group note | `/get rules` or `#rules` |
-| 🗑️ | `/clear` | Delete a group note | `/clear rules` |
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/ban` | Permanently ban a user | `/ban @user spam` |
+| `/tban` | Temporarily ban a user | `/tban @user 7d spam` |
+| `/unban` | Unban a user | `/unban @user` |
+| `/kick` | Kick a user | `/kick @user` |
+| `/kickme` | Kick yourself | `/kickme` |
+| `/mute` | Permanently mute a user | `/mute @user` |
+| `/tmute` | Temporarily mute a user | `/tmute @user 2h` |
+| `/unmute` | Unmute a user | `/unmute @user` |
+| `/warn` | Issue a warning | `/warn @user off-topic` |
+| `/unwarn` | Remove a warning | `/unwarn @user` |
+| `/resetwarns` | Reset all warnings | `/resetwarns @user` |
+| `/warnings` | View user warnings | `/warnings @user` |
+| `/pin` | Pin a message | `/pin` (reply) |
+| `/unpin` | Unpin a message | `/unpin` |
+| `/del` | Delete a message | `/del` (reply) |
+| `/purge` | Purge messages | `/purge` |
+| `/zombies` | Scan and kick deleted accounts | `/zombies` |
+| `/case` | View case details | `/case <case_id>` |
 
-### 🔍 Filter & Blocklist Commands
+---
 
-| Emoji | Command | Description | Example |
-|-------|---------|-------------|---------|
-| ➕ | `/filter` | Add an auto-reply filter | `/filter spam Ban warned` |
-| 🔍 | `/filters` | List all filters | `/filters` |
-| ⛔ | `/stop` | Remove a filter | `/stop spam` |
-| 🔒 | `/addblocklist` | Add a blocked keyword | `/addblocklist bad-word` |
-| ❌ | `/deleteblocklist` | Remove a blocklist keyword | `/deleteblocklist bad-word` |
-| 📋 | `/blocklists` | List blocked keywords | `/blocklists` |
-| ⚙️ | `/blocklistmode` | Set the blocklist action | `/blocklistmode ban` |
+### 🔐 Owner / Admin Commands
 
-### 🔗 Connection & Broadcast Commands
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/protect` | Protect user from moderation | `/protect @user` |
+| `/unprotect` | Remove protection | `/unprotect @user` |
+| `/auth` | Authorize a moderator | `/auth 123456789` |
+| `/unauth` | Remove authorization | `/unauth 123456789` |
+| `/grant` | Grant a permission | `/grant ban 123456789` |
+| `/revoke` | Revoke a permission | `/revoke ban 123456789` |
+| `/freeze` | Freeze a moderator (anti-nuke) | `/freeze 123456789` |
+| `/unfreeze` | Unfreeze a moderator | `/unfreeze 123456789` |
+| `/badge` | Set moderator badge | `/badge 123456789 🟢 Senior Mod` |
+| `/setadmin` | Add SentriX admin (no Telegram role) | `/setadmin 123456789` |
+| `/removeadmin` | Remove SentriX admin | `/removeadmin 123456789` |
+| `/warnconfig` | Configure warning system | `/warnconfig threshold 3` |
+| `/promote` | Promote to admin | `/promote @user` |
+| `/demote` | Demote from admin | `/demote @user` |
 
-| Emoji | Command | Description | Usage |
-|-------|---------|-------------|-------|
-| 🔗 | `/connect` | Connect a group to PM management | `/connect <chat_id>` |
-| 🔁 | `/connections` | View and switch connected groups | `/connections` |
-| 🔌 | `/disconnect` | Disconnect a group | `/disconnect` or `/disconnect all` |
-| 🔐 | `/allowconnections` | Control connection permissions | `/allowconnections yes|no` |
-| 📢 | `/broadcast` | Broadcast a message from bot DM to connected groups | `/broadcast` |
+---
+
+### 🛡️ Protection Commands
+
+| Command | Description |
+|---------|-------------|
+| `/antispam [on\|off]` | Toggle anti-spam |
+| `/antiraid [on\|off]` | Toggle anti-raid |
+| `/captcha [on\|off]` | Toggle CAPTCHA verification |
+| `/lock <type>` | Lock a content type |
+| `/unlock <type>` | Unlock a content type |
+| `/setflood <msgs> [secs]` | Configure flood limits |
+
+---
+
+### 📝 Filters & Blocklist
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/filter <keyword> <response>` | Add auto-reply filter | `/filter spam No spam allowed` |
+| `/filter -regex <pattern> <response>` | Regex filter | `/filter -regex ^\d{10}$ Wrong format` |
+| `/filter -start <keyword> <response>` | Start-of-message filter | `/filter -start !cmd Not a command` |
+| `/filters` | List all filters | `/filters` |
+| `/stop <keyword>` | Remove a filter | `/stop spam` |
+| `/stopall` | Remove all filters | `/stopall` |
+| `/addblocklist <keyword>` | Block a keyword | `/addblocklist badword` |
+| `/deleteblocklist <keyword>` | Remove blocked keyword | `/deleteblocklist badword` |
+| `/blocklists` | List blocked keywords | `/blocklists` |
+| `/blocklistmode <action>` | Set blocklist action | `/blocklistmode ban` |
+
+---
+
+### 📚 Notes
+
+```bash
+/save rules    Follow the group rules please.  # Save a note
+/get rules                                      # Get a note (also: #rules)
+/notes                                          # List all notes
+/clear rules                                    # Delete a note
+```
+
+---
+
+### 👋 Welcome & Goodbye
+
+```bash
+/setwelcome Welcome {mention} to {chat}! 👋
+/setgoodbye  Goodbye {name}, we'll miss you!
+/setrules    No spam. Be respectful.
+```
+
+**Variables:** `{name}` · `{mention}` · `{id}` · `{chat}`
+
+---
+
+### 📢 Log Channel
+
+```bash
+/setlog <channel_id>   # Set log channel (or forward a message from the channel)
+/logchannel            # Show configured log channel
+/unsetlog              # Remove log channel
+/logsettings           # View enabled log event types
+```
+
+**Example log entry:**
+```
+🛡️ BAN
+
+User:   @username
+Admin:  @admin
+Reason: Spam
+Time:   14:32
+Case:   #42
+```
+
+**Logged events:** Bans · Unbans · Mutes · Kicks · Warnings · Deleted messages · Member joins/leaves · Filter triggers · Settings changes · Permission changes
+
+---
+
+### 🔗 Connections & Broadcast
+
+| Command | Description | Usage |
+|---------|-------------|-------|
+| `/connect` | Connect group to PM management | `/connect <chat_id>` |
+| `/connections` | View / switch connected groups | `/connections` |
+| `/disconnect` | Disconnect a group | `/disconnect [all]` |
+| `/allowconnections` | Control connection permissions | `/allowconnections yes\|no` |
+| `/broadcast` | Broadcast to all connected groups (DM only) | `/broadcast` |
+
+---
+
+### ⚙️ Warning Configuration
+
+```bash
+/warnconfig threshold 3       # Set warning limit
+/warnconfig action ban        # Auto-action on threshold (ban / mute / kick)
+/warnconfig duration 1d       # Duration for timed auto-action
+```
+
+**Duration formats:** `30m` · `2h` · `1d` · `3d` · `7d`
+
+---
 
 ### 🎮 Game Commands
 
-| Emoji | Command | Description | Example |
-|-------|---------|-------------|---------|
-| 🎮 | `/ttt` | Start Tic-Tac-Toe | `/ttt @opponent` |
-| 🏆 | `/tttleaderboard` | View top players | `/tttleaderboard` |
-| 📊 | `/tttmystats` | Your stats | `/tttmystats` |
-| 🛑 | `/tttend` | Forfeit game | `/tttend` |
-
-### ⚙️ Configuration Commands
-
-| Emoji | Command | Description | Example |
-|-------|---------|-------------|---------|
-| 🎯 | `/warnconfig threshold` | Set warn limit | `/warnconfig threshold 3` |
-| 🎯 | `/warnconfig action` | Auto-action type | `/warnconfig action ban` |
-| ⏱️ | `/warnconfig duration` | Action duration | `/warnconfig duration 1d` |
-| 👋 | `/setwelcome` | Welcome message | `/setwelcome Welcome {name}!` |
-| 👋 | `/setgoodbye` | Goodbye message | `/setgoodbye See you {name}!` |
-| 📜 | `/setrules` | Set group rules | `/setrules No spam...` |
+| Command | Description |
+|---------|-------------|
+| `/ttt @opponent [size]` | Start Tic-Tac-Toe (3×3 to 5×5) |
+| `/tttleaderboard` | View top players |
+| `/tttmystats` | Your personal stats |
+| `/tttend` | Forfeit current game |
 
 ---
 
-## ⚡ Performance Metrics
+### 📊 Information Commands
 
-### Speed Benchmarks (Per 1000 msgs/min)
-
-```
-Operation                 Before    After      Gain
-────────────────────────────────────────────────────
-Cache Hit Rate           40%       85%        +113%
-Webhook Processing       5-10ms    1-2ms      3x faster
-Log Group Access         10ms      <1ms       95% faster
-API Calls                Every 60s Every 300s 80% reduction
-Duplicate Events         5-10%     <1%        99% reduction
-```
-
-### New Monitoring Endpoint
-
-```bash
-curl http://your-bot/api/diagnostics
-```
-
-Returns real-time metrics:
-- Cache hit rate and size
-- Webhook deduplication stats
-- Performance indicators
-- Timestamp for trending
+| Command | Description |
+|---------|-------------|
+| `/id` | Get user or chat ID |
+| `/info` | User information |
+| `/admins` | List SentriX admins |
+| `/adminlist` | List Telegram group admins |
+| `/stats` | Moderation statistics |
+| `/report` | Report a user |
 
 ---
 
+## 👑 Permission Hierarchy
 
-## 🧭 How It Works
+```
+👑  Owner
+    └── 🛡️  SentriX Global Admin
+               └── 👑  Telegram Group Owner
+                          └── 👮  Telegram Group Admin
+                                     └── 🔑  Granted Moderator
+                                                └── 👤  Regular User
+```
 
-1. Add the bot to your group and promote it to admin.
-2. Use the built-in moderation and management commands from the group or bot DM.
-3. Connect multiple groups through PM management to run operations from one place.
-4. Broadcast updates, manage notes and filters, and keep your community protected with audit-friendly tools.
-
----
-
-## 🌟 Why Choose SentriX Prime
-
-- Built for community admins, moderators, and owners
-- Supports moderation, notes, filters, protection, and broadcasts
-- Works in groups and private DM management mode
-- Includes games and appeal handling for community engagement
+> `ADMIN_IDS` — bot-level access, separate from Telegram group admins.  
+> Group-level permissions are fully isolated between groups.
 
 ---
 
 ## 🚀 Quick Start
 
-### Step 1: Prerequisites
-
-- Python 3.8+
-- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
-- Telegram API credentials (from [my.telegram.org](https://my.telegram.org))
-- MongoDB (optional but recommended)
-
-### Step 2: Installation
+### 1. Clone & Install
 
 ```bash
-# Clone repository
-git clone https://github.com/codewithyo/HR-grp-bot.git
-cd HR-grp-bot
-
-# Install dependencies
+git clone https://github.com/codewithyo/SentriX.git
+cd SentriX
 pip install -r requirements.txt
-
-# Copy environment template
 cp .env.example .env
 ```
 
-### Step 3: Configuration
+### 2. Configure `.env`
 
-Edit `.env` with your credentials:
-
-```bash
+```env
 # Required
-API_ID=123456                        # From my.telegram.org
-API_HASH=abcdef...                  # From my.telegram.org
-BOT_TOKEN=123456:ABC...             # From @BotFather
-OWNER_ID=987654321                  # Your Telegram ID
-ADMIN_IDS=123456789,987654321       # Optional full-access SentriX admins
-PORT=8000                           # Server port
+API_ID=                          # From my.telegram.org
+API_HASH=                        # From my.telegram.org
+BOT_TOKEN=                       # From @BotFather
+OWNER_ID=                        # Your Telegram user ID
+SENTRIX_BOT_USERNAME=hr_sentrix_bot
 
 # Optional but recommended
-LOG_GROUP_ID=0                      # Auto-detect if 0
-MONGO_URL=mongodb://...             # MongoDB connection
-STORAGE_PATH=/data/modbot           # Data storage location
-OWNER_DEBUG_NOTIFICATIONS=1         # Debug alerts (0/1)
+ADMIN_IDS=123456789,987654321    # Comma-separated Global Admin IDs
+LOG_GROUP_ID=0                   # 0 = auto-detect
+BACKUP_CHAT_ID=0
+
+# MongoDB (recommended — without it, data is lost on restart)
+MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>/?appName=Cluster0
+MONGODB_DB_NAME=hr_moderation_bot
+
+# Server
+PORT=8000
+STORAGE_PATH=/data/modbot
+OWNER_DEBUG_NOTIFICATIONS=0
 ```
 
-### Step 4: Run Locally
+### 3. Run
 
 ```bash
 python start.py
 ```
 
-Bot will start on `http://localhost:8000`
-
-### Step 5: Setup in Telegram
+### 4. Setup in Telegram
 
 ```bash
-# 1. Open Telegram and start private chat with bot
+# 1. Start a DM with the bot
 /start
 
-# 2. Add bot to your group as admin
+# 2. Add the bot to your group as admin
 
-# 3. Authorize first moderator (as owner)
+# 3. Authorize your first moderator (run as owner)
 /auth <moderator_user_id>
 
-# 4. Start moderating!
+# 4. Done!
 /help
 ```
 
 ---
 
-## 🐳 Docker Deployment
+## ☁️ Deployment
 
-### Build Image
-
-```bash
-docker build -t sentrix-bot .
-```
-
-### Run Container
+### 🐳 Docker
 
 ```bash
+# Build
+docker build -t sentrix .
+
+# Run
 docker run -d \
   -e API_ID=123456 \
   -e API_HASH=abcdef \
   -e BOT_TOKEN=123456:ABC \
   -e OWNER_ID=987654321 \
-   -e ADMIN_IDS=123456789,987654321 \
-  -e MONGO_URL=mongodb://host:port/db \
+  -e MONGODB_URI=mongodb://host:port/db \
   -p 8000:8000 \
-  --name sentrix-bot \
-  sentrix-bot
+  --name sentrix \
+  sentrix
 ```
+
+### ☁️ Cloud Platforms
+
+| Platform | How to Deploy |
+|----------|--------------|
+| **Koyeb** (Recommended) | Push to GitHub → Connect repo → Set env vars → Deploy |
+| **Render** | Connect GitHub → Set env vars → Auto-restart enabled |
+| **Railway** | Link GitHub → Select repo → Add env vars → One-click |
 
 ---
 
-## ☁️ Cloud Deployment
-
-### Koyeb (Recommended)
-
-1. Push to GitHub:
-```bash
-git push origin main
-```
-
-2. Connect repository to Koyeb
-3. Set environment variables in dashboard
-4. Deploy automatically
-
-### Render
-
-1. Connect GitHub repository
-2. Configure environment variables
-3. Deploy with auto-restart
-
-### Railway.app
-
-1. Link GitHub account
-2. Select repository
-3. Add environment variables
-4. Deploy in one click
-
----
-
-## 📊 File Structure
+## 📂 File Structure
 
 ```
-HR-grp-bot/
+SentriX/
+├── sentrix/                   # Modular feature package
+│   ├── start.py
+│   ├── admin.py
+│   ├── moderation.py
+│   ├── antispam.py
+│   ├── filters.py
+│   ├── welcome.py
+│   ├── locks.py
+│   ├── notes.py
+│   ├── verification.py
+│   ├── settings.py
+│   ├── help.py
+│   ├── setup.py
+│   ├── logging_commands.py
+│   ├── protection.py
+│   ├── connections.py
+│   ├── information.py
+│   ├── context.py
+│   ├── database.py
+│   ├── config.py
+│   ├── utils.py
+│   ├── registry.py
+│   └── application.py
 ├── api/
-│   └── index.py           # Main bot logic (5500+ lines)
-├── db.py                  # MongoDB wrapper
-├── games.py               # Game engine (Tic-Tac-Toe)
-├── run_local.py           # Local development runner
-├── start.py               # Production entry point
-├── Dockerfile             # Docker image definition
-├── requirements.txt       # Python dependencies
-├── .env.example           # Environment template
-├── README.md              # This file
-├── BOT_FEATURES.md        # Detailed feature guide
-├── CHANGES.md             # Update history
-└── commands list.txt      # Command reference
+│   └── index.py               # ASGI import surface
+├── db.py                      # MongoDB wrapper
+├── games.py                   # Tic-Tac-Toe engine
+├── start.py                   # Production entry point
+├── run_local.py               # Local dev runner
+├── Dockerfile
+├── requirements.txt
+├── .env.example
+├── BOT_FEATURES.md
+└── CHANGES.md
 ```
 
 ---
 
-## 🔧 Configuration Reference
+## 📦 Dependencies
 
-### Environment Variables
-
-```bash
-# === REQUIRED ===
-API_ID                          # Telegram API ID
-API_HASH                        # Telegram API Hash
-BOT_TOKEN                       # Bot token from @BotFather
-OWNER_ID                        # Your Telegram user ID
-ADMIN_IDS                       # Comma-separated full-access SentriX admins
-PORT                            # Server port (8000)
-
-# === OPTIONAL ===
-LOG_GROUP_ID                    # Log group ID (auto-detect if 0)
-BACKUP_CHAT_ID                  # Backup chat ID
-MONGO_URL                       # MongoDB connection string
-STORAGE_PATH                    # Local data storage path
-FALLBACK_STORAGE_PATH          # Fallback storage location
-OWNER_DEBUG_NOTIFICATIONS       # Debug mode (0 or 1)
-WEBHOOK_URL                     # Webhook URL (auto-detected)
-APP_URL                         # Application URL
 ```
-
-### Warning Configuration
-
-```bash
-# Set warn threshold (auto-action triggers)
-/warnconfig threshold 3
-
-# Choose auto-action type
-/warnconfig action ban
-
-# Set action duration
-/warnconfig duration 1d
-```
-
----
-
-## 🛠️ Advanced Features
-
-### Custom Filters with Regex
-
-```bash
-# Exact match filter
-/filter spam_keyword ⚠️ No spam allowed
-
-# Regex pattern filter
-/filter -regex ^\d{10}$ Please use proper format
-
-# Start of message
-/filter -start banned_phrase This is not allowed
-```
-
-### Welcome Message Variables
-
-```bash
-/setwelcome Welcome {name}! 👋
-/setwelcome Your ID: {id}
-/setwelcome Please mention {mention}
-```
-
-Variables:
-- `{name}` - User's first name
-- `{mention}` - User mention link
-- `{id}` - User ID
-
-### Moderator Badges
-
-```bash
-/badge 123456789 🟢 Senior Mod
-/badge 987654321 🔵 Junior Mod
-```
-
-### Frozen Moderators
-
-Freeze moderator to prevent accidental actions:
-
-```bash
-/freeze 123456789
-
-# Later unfreeze when ready
-/unfreeze 123456789
-```
-
----
-
-## 📈 Monitoring & Logs
-
-### Health Checks
-
-```bash
-# Bot status
-curl http://localhost:8000/health
-
-# API status
-curl http://localhost:8000/api/status
-
-# Performance metrics
-curl http://localhost:8000/api/diagnostics
-```
-
-### Log Files
-
-Check startup logs for:
-- MongoDB connection status
-- Storage verification counts
-- Bot initialization success
-
-```bash
-[2024-06-01 10:30:45] [INFO] ✅ Log group confirmed: Logs (123456789)
-[2024-06-01 10:30:46] [INFO] ✅ Restored warns: 1523 cases
-[2024-06-01 10:30:47] [INFO] ✅ Restored notes: 845 entries
+pyrogram==2.0.106    # Telegram MTProto client
+tgcrypto             # Pyrogram crypto operations
+fastapi              # Web framework (webhook receiver)
+httpx                # HTTP client (Telegram Bot API)
+uvicorn[standard]    # ASGI server
+pymongo>=4.0         # MongoDB driver
 ```
 
 ---
 
 ## 🔒 Security Best Practices
 
-1. **Never share credentials** - Keep `.env` file private
-2. **Use HTTPS** - Enable SSL in production
-3. **Rate limiting** - Built-in anti-spam protection
-4. **Audit logs** - Review `/case` logs regularly
-5. **Permission scoping** - Grant minimal required permissions
-6. **Regular backups** - Automated MongoDB + local fallbacks
-7. **Anti-nuke** - Freeze suspicious moderators
+1. **Never commit `.env`** — keep credentials private
+2. **Use HTTPS** — enable SSL in production
+3. **Minimal permissions** — grant only what moderators need
+4. **Audit regularly** — review `/case` logs
+5. **Anti-nuke** — `/freeze` suspicious moderators immediately
+6. **Backups** — MongoDB + local JSON fallback always active
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Bot Not Responding
+<details>
+<summary><b>Bot not responding</b></summary>
 
 ```bash
-# Check bot status
 curl http://localhost:8000/api/status
-
-# Check logs for errors
-tail -100 /path/to/logs
-
-# Verify webhook
 curl http://localhost:8000/api/setup_webhook
 ```
 
-### Data Not Persisting
+Check bot has admin permissions in the group and `BOT_TOKEN` is correct.
+</details>
 
-1. Check MongoDB connection: `MONGO_URL` variable
-2. Verify storage path: `STORAGE_PATH` directory
-3. Check file permissions: `chmod 755 /data/modbot`
-4. Review startup logs for errors
+<details>
+<summary><b>Data not persisting after restart</b></summary>
 
-### Command Not Working
+- Verify `MONGODB_URI` is set and the cluster is reachable
+- Check `STORAGE_PATH` directory exists and has write permissions: `chmod 755 /data/modbot`
+- Review startup logs for MongoDB connection errors
+</details>
 
-1. Verify user permissions: `/modinfo`
-2. Check command syntax: `/help`
-3. Verify bot admin status in group
-4. Check bot is added to group
+<details>
+<summary><b>Command not working</b></summary>
 
-### Performance Issues
-
-1. Monitor cache hit rate: `/api/diagnostics`
-2. Check database connection: MongoDB logs
-3. Review webhook dedup size (should be <500)
-4. Increase server resources if needed
+1. Check your permissions: `/modinfo`
+2. Verify syntax: `/help <command>`
+3. Confirm bot is admin in the group
+</details>
 
 ---
 
-## 📝 Development
+## 💬 Support
 
-### Local Testing
-
-```bash
-python run_local.py
-```
-
-### Code Structure
-
-- **api/index.py** - Main command handlers and logic
-- **db.py** - MongoDB connection and operations
-- **games.py** - Game engine and leaderboards
-- **requirements.txt** - Python package dependencies
-
-### Adding New Commands
-
-1. Add to `MODERATION_COMMANDS` set in `api/index.py`
-2. Create command handler function
-3. Add help documentation
-4. Test with `/help`
+- 🐛 **Bugs / Features** — [Open a GitHub Issue](https://github.com/codewithyo/SentriX/issues)
+- 📖 **Detailed docs** — [BOT_FEATURES.md](BOT_FEATURES.md)
+- 👨‍💼 **Developer** — [@dreamm_ca](https://t.me/dreamm_ca)
 
 ---
 
-## 💬 Support & Community
+## 📄 License
 
-- **Issues** - Report bugs on GitHub
-- **Features** - Request features via issues
-- **Discussions** - Join community discussions
-- **Documentation** - Full docs in BOT_FEATURES.md
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
 
-### Contact
-
-- 👨‍💼 **Primary Developer** - [@dreamm_ca](https://t.me/dreamm_ca)
-- 👨‍💻 **Technical Lead** - [@developer_hr](https://t.me/developer_hr)
-
----
-
-## 📄 License & Attribution
-
-- **License** - MIT (Open Source)
-- **Built with** - FastAPI, Pyrogram, MongoDB
-- **Contributors** - Community driven
-
----
-
-## ✨ Changelog (v2.0)
-
-### Features Added
-- ✅ Broadcast messaging system (all groups + specific group)
-- ✅ Performance optimization (60-90% faster)
-- ✅ Request deduplication (99% fewer duplicates)
-- ✅ Parallel async processing
-- ✅ Professional start message with inline buttons
-- ✅ Diagnostics endpoint for monitoring
-
-### Improvements
-- ✅ 5x longer cache TTL (300s)
-- ✅ 85% cache hit rate
-- ✅ Better error handling
-- ✅ Exponential backoff retry logic
-- ✅ Webhook optimization
-
-### Bug Fixes
-- ✅ Fixed group detection caching
-- ✅ Improved log group detection
-- ✅ Better fallback handling
+Built with ❤️ using **Pyrogram** · **FastAPI** · **MongoDB**
 
 ---
 
 <div align="center">
 
-### 🚀 Ready to Deploy!
+🛡️ **SentriX** — *Your Community. Secured.*
 
-**SentriX Prime v2.0** - Enterprise-Grade Group Management
-
-[Get Started](#-quick-start) • [Read Docs](BOT_FEATURES.md) • [Support](#-support--community)
-
-**Status**: ✅ Production Ready | 📈 Actively Maintained | 🛡️ Security Verified
+⭐ Star the repo if you find it useful!
 
 </div>

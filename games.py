@@ -19,7 +19,7 @@ import httpx
 # CONFIGURATION & GLOBALS
 # ─────────────────────────────────────────────────────────
 
-BOT_TOKEN = ""
+_bot_token = ""
 SCORES_FILE = "data/ttt_scores.json"
 STATE_FILE = "data/ttt_state.json"
 SAVE_FN: Optional[Callable] = None
@@ -354,7 +354,7 @@ async def tg_send_message(
         if markup:
             payload["reply_markup"] = markup
         resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            f"https://api.telegram.org/bot{_bot_token}/sendMessage",
             json=payload,
         )
         data = resp.json()
@@ -408,7 +408,7 @@ async def tg_edit_message(
         if markup:
             payload["reply_markup"] = markup
         resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+            f"https://api.telegram.org/bot{_bot_token}/editMessageText",
             json=payload,
         )
         return resp.status_code == 200
@@ -422,7 +422,7 @@ async def tg_delete_message(chat_id: int, message_id: int) -> bool:
     try:
         client = await _get_http_client()
         resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",
+            f"https://api.telegram.org/bot{_bot_token}/deleteMessage",
             json={"chat_id": chat_id, "message_id": message_id},
         )
         return resp.status_code == 200
@@ -440,7 +440,7 @@ async def tg_answer_callback(
     try:
         client = await _get_http_client()
         resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+            f"https://api.telegram.org/bot{_bot_token}/answerCallbackQuery",
             json={
                 "callback_query_id": callback_id,
                 "text": text,
@@ -519,8 +519,8 @@ def init_games(
     bot_token: str = "",
 ):
     """Initialize game module with persistence functions."""
-    global BOT_TOKEN, SCORES_FILE, STATE_FILE, SAVE_FN, LOAD_FN
-    BOT_TOKEN = bot_token
+    global _bot_token, SCORES_FILE, STATE_FILE, SAVE_FN, LOAD_FN
+    _bot_token = bot_token
     SCORES_FILE = scores_file
     STATE_FILE = str(Path(scores_file).with_name("ttt_state.json"))
     SAVE_FN = save_fn
@@ -1473,7 +1473,7 @@ INTEGRATION INTO main.py (index.py)
        save_fn=save,        # from db.py / your save function
        load_fn=load,        # from db.py / your load function
        scores_file=TTT_SCORES_FILE,
-       bot_token=BOT_TOKEN,
+    bot_token=config.bot_token,
    )
    # Start cleanup worker
    asyncio.create_task(games_cleanup_worker())

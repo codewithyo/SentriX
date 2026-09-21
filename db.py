@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from sentrix.config import get_config
 
 class MongoDBHandler:
     """Handle MongoDB operations with JSON fallback and connection pooling."""
@@ -49,10 +50,8 @@ class MongoDBHandler:
     def connect(self) -> bool:
         """Connect to MongoDB with connection pooling. Returns True if successful."""
         try:
-            mongodb_uri = os.environ.get(
-                "MONGODB_URI",
-                "mongodb://localhost:27017"
-            )
+            config = get_config()
+            mongodb_uri = config.mongodb_uri
             self.client = MongoClient(
                 mongodb_uri,
                 serverSelectionTimeoutMS=5000,
@@ -65,7 +64,7 @@ class MongoDBHandler:
             # Test the connection
             self.client.admin.command('ping')
             
-            db_name = os.environ.get("MONGODB_DB_NAME", "hr_moderation_bot")
+            db_name = config.mongodb_db_name
             self.db = self.client[db_name]
             self.connected = True
             

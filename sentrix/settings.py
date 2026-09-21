@@ -4,13 +4,24 @@ from .context import FeatureContext, FeatureResult
 
 
 def settings_markup() -> dict:
+    buttons = [
+        ("🛡️ Moderation", "settings_moderation"),
+        ("🚫 Anti-Spam", "settings_antispam"),
+        ("🔗 Link Protection", "settings_links"),
+        ("👋 Welcome", "settings_welcome"),
+        ("🔐 Verification", "settings_verification"),
+        ("🔒 Locks", "settings_locks"),
+        ("📝 Filters", "settings_filters"),
+        ("📊 Statistics", "settings_statistics"),
+        ("📢 Logging", "settings_logging"),
+    ]
     return {
         "inline_keyboard": [
-            [{"text": "🛡️ Moderation", "callback_data": "settings_moderation"}, {"text": "🚫 Anti-Spam", "callback_data": "settings_antispam"}],
-            [{"text": "🔗 Link Protection", "callback_data": "settings_links"}, {"text": "👋 Welcome", "callback_data": "settings_welcome"}],
-            [{"text": "🔐 Verification", "callback_data": "settings_verification"}, {"text": "🔒 Locks", "callback_data": "settings_locks"}],
-            [{"text": "📝 Filters", "callback_data": "settings_filters"}, {"text": "📊 Statistics", "callback_data": "settings_statistics"}],
-            [{"text": "📢 Logging", "callback_data": "settings_logging"}],
+            [
+                {"text": text, "callback_data": callback}
+                for text, callback in buttons[index:index + 3]
+            ]
+            for index in range(0, len(buttons), 3)
         ]
     }
 

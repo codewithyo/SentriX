@@ -6,7 +6,7 @@
 #           (getChatMember) to avoid Pyrogram "Peer id invalid" errors
 #           caused by the empty in-memory peer cache after restarts.
 #   FIX-B: Added _BotApiMember wrapper + api_get_chat_member() helper.
-#   FIX-C: Removed dead code block in moderation_help_markup().
+#   FIX-C: Removed the obsolete duplicate help implementation.
 #   FIX-D: Removed duplicate `if raw_cmd == "rules":` handler block.
 #   FIX-E: Fixed lock/unlock to allow PM-connected users.
 #   FIX-F: Added missing /unauth command handler.
@@ -41,7 +41,7 @@ from games import (
     shutdown_games,
     TTT_CALLBACK_PREFIXES,
 )
-from sentrix.config import SentriXConfig
+from sentrix.config import SentriXConfig, get_config
 from sentrix.context import FeatureContext
 from sentrix.database import MappingStore
 from sentrix.builtin import build_registry
@@ -49,6 +49,7 @@ from sentrix.logging import AdminLogService, LOGGER, configure_logging
 from sentrix.help import help_markup, help_text, render_callback
 from sentrix.settings import settings_markup, settings_text
 from sentrix.setup import STEPS, setup_markup
+from sentrix.permissions import PermissionService
 
 # =========================================================
 # CACHING LAYER
@@ -178,17 +179,17 @@ def log_msg(msg: str, level: str = "INFO"):
 # CONFIG
 # =========================================================
 
-SENTRIX_CONFIG = SentriXConfig.from_env()
+SENTRIX_CONFIG = get_config()
 API_ID       = SENTRIX_CONFIG.api_id
 API_HASH     = SENTRIX_CONFIG.api_hash
 BOT_TOKEN    = SENTRIX_CONFIG.bot_token
 OWNER_ID     = SENTRIX_CONFIG.owner_id
 LOG_GROUP_ID = SENTRIX_CONFIG.log_group_id
-PORT         = int(os.environ.get("PORT", "8000"))
-OWNER_DEBUG_NOTIFICATIONS = os.environ.get("OWNER_DEBUG_NOTIFICATIONS", "0") == "1"
+PORT         = SENTRIX_CONFIG.port
+OWNER_DEBUG_NOTIFICATIONS = SENTRIX_CONFIG.owner_debug_notifications
 
 _log_group_id: int   = LOG_GROUP_ID
-_backup_chat_id: int = int(os.environ.get("BACKUP_CHAT_ID", str(LOG_GROUP_ID)))
+_backup_chat_id: int = SENTRIX_CONFIG.backup_chat_id or LOG_GROUP_ID
 
 def get_log_group() -> int:
     """Cached log group retrieval."""
@@ -217,7 +218,7 @@ def resolve_storage_path() -> str:
         return fallback
 
 STORAGE_PATH          = resolve_storage_path()
-FALLBACK_STORAGE_PATH = os.environ.get("FALLBACK_STORAGE_PATH", "/tmp/modbot_fallback")
+FALLBACK_STORAGE_PATH = SENTRIX_CONFIG.fallback_storage_path
 Path(FALLBACK_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
 
 # =========================================================
@@ -998,11 +999,8 @@ async def get_chat_member_safe(bot: Client, chat_id, user_identifier):
 
 
 async def is_chat_admin(bot: Client, chat_id: int, user_id: int) -> bool:
-    """FIX-A: Uses Bot API instead of Pyrogram to avoid peer-cache errors."""
-    data, err = await api_get_chat_member(int(chat_id), int(user_id))
-    if err or not data:
-        return False
-    return data.get("status") in _BOT_API_ADMIN_STATUSES
+    """Use the centralized permission service for Telegram admin checks."""
+    return await _permissions.is_admin(int(chat_id), int(user_id))
 
 # =========================================================
 # TELEGRAM BACKUP
@@ -1091,41 +1089,24 @@ async def restore_from_telegram_pyrogram(bot: Client) -> int:
 # PERMISSION CHECKS
 # =========================================================
 
+_permissions = PermissionService(
+    OWNER_ID,
+    api_get_chat_member,
+    lambda: load(AUTH_FILE),
+    SENTRIX_CONFIG.admin_ids,
+)
+
 def is_owner(uid: int) -> bool:
-    return uid == OWNER_ID
+    return _permissions.is_owner(uid)
 
 def is_authorized(uid: int) -> bool:
-    if is_owner(uid):
-        return True
-    cache_key = f"auth:{uid}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
-    is_auth = str(uid) in load(AUTH_FILE)
-    _cache.set(cache_key, is_auth)
-    return is_auth
+    return _permissions.is_sentrix_admin(uid)
 
 def has_permission(uid: int, perm: str) -> bool:
-    if is_owner(uid):
-        return True
-    cache_key = f"perm:{uid}:{perm}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
-    result = load(AUTH_FILE).get(str(uid), {}).get("permissions", {}).get(perm, False)
-    _cache.set(cache_key, result)
-    return result
+    return _permissions.has_permission(uid, perm)
 
 def is_frozen(uid: int) -> bool:
-    if is_owner(uid):
-        return False
-    cache_key = f"frozen:{uid}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
-    result = bool(load(AUTH_FILE).get(str(uid), {}).get("frozen", False))
-    _cache.set(cache_key, result)
-    return result
+    return _permissions.is_frozen(uid)
 
 # =========================================================
 # UTILITY HELPERS
@@ -1272,7 +1253,7 @@ async def allow_connections(bot: Client, msg: dict, args: list[str]) -> str:
     user_id = user.get("id")
     if not user_id:
         return "Please enter on/yes/off/no in group!"
-    if not (await is_chat_admin(bot, chat["id"], user_id) or user_id == OWNER_ID):
+    if not (await is_chat_admin(bot, chat["id"], user_id) or is_owner(user_id)):
         return "Only group admins can change this setting."
     if len(args) < 1:
         return "Please enter on/yes/off/no in group!"
@@ -2409,140 +2390,6 @@ def create_appeal(uid: int, case_id: str, message: str) -> str:
     save(APPEALS_FILE, appeals)
     return aid
 
-def role_help_text(uid: int) -> str:
-    if is_owner(uid):
-        return (
-            "╔════════════════════════════════════════╗\n"
-            "║  👑 OWNER COMMAND REFERENCE            ║\n"
-            "╚════════════════════════════════════════╝\n\n"
-            "🔐 **Authorization Commands:**\n"
-            "`/auth <user_id>` - Authorize a moderator\n"
-            "`/unauth <user_id>` - Remove moderator status\n"
-            "`/revoke <perm|all> <user_id>` - Remove permission(s)\n"
-            "`/grant <user_id>` - Grant all permissions\n"
-            "`/grant <perm> <user_id>` - Grant one permission\n"
-            "`/freeze <user_id>` - Freeze moderator account\n"
-            "`/unfreeze <user_id>` - Unfreeze moderator account\n"
-            "`/badge <user_id> <badge text>` - Set mod badge/title\n\n"
-            "⚙️ **Warn Configuration:**\n"
-            "`/warnconfig threshold <n>` - Set warn threshold\n"
-            "`/warnconfig action <ban|mute|kick>` - Set auto-action\n"
-            "`/warnconfig duration <e.g. 1h>` - Set auto-action duration\n"
-            "`/warnconfig show` - Show current config\n\n"
-            "📋 **Notes (group-scoped):**\n"
-            "`/save <name> <text>` - Save a text note\n"
-            "`/save <name>` (reply) - Save replied message as note\n"
-            "`/get <name>` or `#name` - Retrieve a note\n"
-            "`/clear <name>` - Delete a note\n"
-            "`/notes` - List all notes\n\n"
-            "🔍 **Filters (auto-reply keywords):**\n"
-            "`/filter <keyword> <response>` - Add a filter\n"
-            "`/filter -regex <pattern> <response>` - Regex filter\n"
-            "`/filter -exact <keyword> <response>` - Exact-match filter\n"
-            "`/stop <keyword>` - Remove a filter\n"
-            "`/filters` - List all filters\n\n"
-            "🛡️ **Protection Commands:**\n"
-            "`/protect <user_id>` - Protect user from moderation\n"
-            "`/unprotect <user_id>` - Remove user protection\n"
-            "`/protected` - List protected users\n\n"
-            "🎉 **Welcome / Goodbye:**\n"
-            "`/setwelcome <text>` - Set welcome message\n"
-            "`/setgoodbye <text>` - Set goodbye message\n"
-            "`/welcome on|off` - Toggle welcome on/off\n"
-            "`/goodbye on|off` - Toggle goodbye on/off\n"
-            "`/setrules <text>` - Set group rules\n"
-            "`/rules on|off` - Toggle rules command\n\n"
-            "🚨 **Report / Lock:**\n"
-            "`/report [reason]` - Report a message to admins\n"
-            "`/lock [duration]` - Lock the chat\n"
-            "`/unlock` - Unlock the chat\n\n"
-            "📋 **Moderation Commands:**\n"
-            "`/ban` / `/ban` / `/tban` - Ban or temporarily ban a user\n"
-            "`/kick` / `/kick` - Kick a user from the group\n"
-            "`/kickme` - Kick yourself from the group\n"
-            "`/mute` / `/mute` / `/tmute` - Mute or temporarily mute a user\n"
-            "`/unban` / `/unban` - Unban a user\n"
-            "`/unmute` / `/unmute` - Unmute a user\n"
-            "`/stats` - Show moderation stats\n"
-            "`/mod list` - List authorized moderators\n"
-            "`/warn [user_id/@user] [reason]` - Warn user\n"
-            "`/del` - Delete replied message\n"
-            "`/case <case_id>` - View case details\n"
-            "`/modinfo [user_id]` - View moderator info\n\n"
-            "🔗 **Connections (PM multi-group):**\n"
-            "`/allowconnections yes|no` - Allow PM connection to this group\n"
-            "`/connect <chat_id>` - Connect PM to a group\n"
-            "`/connections` - List & switch connected groups\n"
-            "`/disconnect [chat_id|all]` - Disconnect from a group\n"
-            "`/broadcast` - Broadcast from bot DM to connected groups\n\n"
-            "🎮 **Games:**\n"
-            "`/ttt [user_id]` - Start Tic-Tac-Toe\n"
-            "`/tttleaderboard` - Show top players\n"
-            "`/tttmystats` - Show your game stats\n"
-            "`/tttend` - Forfeit active game\n\n"
-            "⏱️ **Duration Format:** 30m, 2h, 1d\n"
-            "💡 **Tip:** Reply to a message to target without ID\n"
-        )
-    if is_authorized(uid):
-        return (
-            "╔════════════════════════════════════════╗\n"
-            "║  👮 MODERATOR COMMAND REFERENCE       ║\n"
-            "╚════════════════════════════════════════╝\n\n"
-            "🚫 **Moderation Commands:**\n"
-            "`/ban` / `/ban` / `/tban` - Ban or temporarily ban a user\n"
-            "`/kick` / `/kick` - Kick a user from the group\n"
-            "`/kickme` - Kick yourself from the group\n"
-            "`/mute` / `/mute` / `/tmute` - Mute or temporarily mute a user\n"
-            "`/unban` / `/unban` - Unban a user\n"
-            "`/unmute` / `/unmute` - Unmute a user\n"
-            "`/stats` - Show moderation stats\n"
-            "`/warn [user_id/@user] [reason]` - Warn user\n"
-            "`/del` - Delete replied message\n\n"
-            "📋 **Notes:**\n"
-            "`/save <name> <text>` - Save a note\n"
-            "`/get <name>` or `#name` - Get a note\n"
-            "`/clear <name>` - Delete a note\n"
-            "`/notes` - List all notes\n\n"
-            "🔍 **Filters:**\n"
-            "`/filter <keyword> <response>` - Add keyword auto-reply\n"
-            "`/stop <keyword>` - Remove a filter\n"
-            "`/filters` - List all filters\n\n"
-            "📋 **Information Commands:**\n"
-            "`/case <case_id>` - View case details\n"
-            "`/mod list` - List authorized moderators\n"
-            "`/modinfo` - View your moderator info\n"
-            "`/id` - Get user information\n\n"
-            "🔗 **Connections:**\n"
-            "`/connect <chat_id>` - Connect PM to a group\n"
-            "`/connections` - List & switch connected groups\n"
-            "`/disconnect [chat_id|all]` - Disconnect\n"
-            "`/broadcast` - Send a message to all or one connected group from bot DM\n\n"
-            "🎮 **Games:**\n"
-            "`/ttt [user_id]` - Start Tic-Tac-Toe\n"
-            "`/tttleaderboard` - Show top players\n\n"
-            "⏱️ **Duration Format:** 30m, 2h, 1d\n"
-        )
-    return (
-        "╔════════════════════════════════════════╗\n"
-        "║  👤 USER COMMAND REFERENCE            ║\n"
-        "╚════════════════════════════════════════╝\n\n"
-        "🆔 **Available Commands:**\n"
-        "`/start` - View welcome message\n"
-        "`/help` - Show this help message\n"
-        "`/id` - Get user ID & profile info\n"
-        "`/ttt [user_id]` - Play Tic-Tac-Toe\n"
-        "`/tttleaderboard` - Show top players\n"
-        "`/tttmystats` - Show your game stats\n"
-        "`/tttend` - Forfeit active game\n\n"
-        "📋 **Notes:**\n"
-        "`/get <name>` or `#name` - Get a saved note\n"
-        "`/notes` - List available notes\n\n"
-        "📢 **Appeals:**\n"
-        "`/appeal <case_id> <message>` in bot DM\n\n"
-        "📞 **Support:**\n"
-        "Contact your group administrator for assistance\n"
-    )
-
 # =========================================================
 # INLINE KEYBOARD BUILDER
 # =========================================================
@@ -2559,354 +2406,6 @@ def build_markup(*rows) -> dict:
         keyboard.append(btn_row)
     return {"inline_keyboard": keyboard}
 
-
-# FIX-C: removed dead unreachable code block that appeared after the returns
-def moderation_help_markup(section: str = "home") -> dict:
-    base_rows = (
-        (("🚫 Ban", "cb:help_ban"), ("🔇 Mute", "cb:help_mute"), ("⚠ Warn", "cb:help_warn")),
-        (("👢 Kick", "cb:help_kick"), ("🛡 Protect", "cb:help_protect"), ("📋 Notes", "cb:help_notes")),
-        (("🔍 Filters", "cb:help_filters"), ("🔒 Blocklist", "cb:help_blocklist"), ("🔗 Connections", "cb:help_connections")),
-        (("📢 Broadcast", "cb:help_broadcast"), ("🔐 Authorization", "cb:help_auth"), ("📊 Stats", "cb:help_stats")),
-        (("🎮 Games", "cb:help_games"), ("🎉 Welcome", "cb:help_welcome"), ("📜 Rules", "cb:help_rules")),
-        (("🚨 Report", "cb:help_report"), ("🔒 Lock", "cb:help_lock"), ("🔓 Lock Types", "cb:help_locktypes")),
-        (("🤖 Bot Toggle", "cb:help_bot"),),
-    )
-    if section == "home":
-        return build_markup(*base_rows)
-    return build_markup(*base_rows, (("⬅️ Back", "cb:help_home"),))
-
-
-def moderation_help_text(section: str, uid: int) -> str:
-    role = "OWNER" if is_owner(uid) else "MODERATOR"
-    if section == "ban":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🚫 **Ban System**\n\n"
-            "`/ban [user_id/@user] [duration] [reason]` - Ban a user\n"
-            "`/unban [user_id/@user] [reason]` - Unban a user\n"
-            "`/bans` - List all bans in this group\n\n"
-            "**Usage**\n"
-            "• Reply to a user's message OR pass user ID/username\n"
-            "• Duration: Optional (default permanent)\n"
-            "  Examples: `30m`, `2h`, `1d`, `7d`\n"
-            "• Reason: Logged in case file\n"
-            "• Example: `/ban @user 2h spam`\n\n"
-            "**Notes**\n"
-            "• Protected users cannot be banned\n"
-            "• Temporary bans auto-expire and remove restriction\n"
-            "• Use `/unban` to manually unban before expiry\n"
-        )
-    if section == "mute":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔇 **Mute System**\n\n"
-            "`/mute [user_id/@user] [duration] [reason]` - Mute a user\n"
-            "`/unmute [user_id/@user] [reason]` - Unmute a user\n"
-            "`/mutes` - List all mutes in this group\n\n"
-            "**Usage**\n"
-            "• Reply to a user's message OR pass user ID/username\n"
-            "• Duration: Optional (default permanent)\n"
-            "  Examples: `30m`, `2h`, `1d`, `7d`\n"
-            "• Muted users cannot send messages\n"
-            "• Example: `/mute @user 1h flooding`\n\n"
-            "**Notes**\n"
-            "• Protected users cannot be muted\n"
-            "• Temporary mutes auto-expire and restore permissions\n"
-            "• Admin can always override mute\n"
-        )
-    if section == "warn":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "⚠ **Warn System**\n\n"
-            "`/warn [user_id/@user] [reason]` - Issue a warning to a user\n"
-            "`/warnings [user_id/@user]` - Check total warnings for a user\n"
-            "`/resetwarns [user_id/@user]` - Reset warnings for a user\n"
-            "`/warnconfig` - Configure auto-action thresholds\n\n"
-            "**Usage**\n"
-            "• Reply to a user's message or pass their ID/username.\n"
-            "• Warn system can auto-mute/ban after threshold warnings.\n"
-            "• Example: `/warn @user off-topic`\n"
-        )
-    if section == "kick":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "👢 **Kick System**\n\n"
-            "`/kick <user_id/@user> [reason]` - Kick a user from group\n\n"
-            "**Usage**\n"
-            "• Reply to a user's message OR pass user ID/username\n"
-            "• User is immediately removed from group\n"
-            "• User can rejoin unless also banned\n"
-            "• Example: `/kick @user rule violation`\n\n"
-            "**Features**\n"
-            "• Instant removal - no waiting\n"
-            "• Different from ban - user can rejoin\n"
-            "• Often used with warning before ban\n"
-            "• Protected users cannot be kicked\n"
-        )
-    if section == "protect":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🛡 **Protection Commands**\n\n"
-            "`/protect <user_id>` - Protect a user from moderation\n"
-            "`/unprotect <user_id>` - Remove user protection\n"
-            "`/protected` - List all protected users\n\n"
-            "**Usage**\n"
-            "• Owner-only commands.\n"
-            "• Protected users cannot be banned, muted, kicked, or warned.\n"
-            "• Use for bots, admins, or trusted members.\n"
-            "• Example: `/protect 123456789`\n"
-        )
-    if section == "welcome":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🎉 **Welcome & Goodbye**\n\n"
-            "`/setwelcome <text>` — Set welcome message\n"
-            "`/setgoodbye <text>` — Set goodbye message\n"
-            "`/welcome on|off` — Enable or disable welcome\n"
-            "`/goodbye on|off` — Enable or disable goodbye\n"
-            "`/welcome` — View current welcome message & status\n"
-            "`/goodbye` — View current goodbye message & status\n\n"
-            "**Variables**\n"
-            "• `{mention}` — Clickable user mention\n"
-            "• `{name}` — User display name\n"
-            "• `{id}` — User ID\n\n"
-            "**Examples**\n"
-            "• `/setwelcome Hello {mention}, welcome to the group! 👋`\n"
-            "• `/setgoodbye Goodbye {name}, we'll miss you!`\n"
-        )
-    if section == "rules":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "📜 **Rules**\n\n"
-            "`/setrules <text>` — Set or update group rules\n"
-            "`/rules` — Show current rules (members)\n"
-            "`/rules on|off` — Enable or disable the rules command\n\n"
-            "**Usage**\n"
-            "• Use `/setrules off` to clear rules entirely.\n"
-            "• Use `/rules off` to hide rules without deleting them.\n"
-            "• Example: `/setrules 1) Be respectful 2) No spam 3) Stay on topic`\n"
-        )
-    if section == "report":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🚨 **Report System**\n\n"
-            "`/report [reason]` — Alert all admins and the log group\n\n"
-            "**Usage**\n"
-            "• Reply to the offending message, then run `/report`.\n"
-            "• Optionally include a reason: `/report posting scam links`\n"
-            "• The report is sent privately to every admin and to the log group.\n"
-            "• You'll see a confirmation message when the report is sent.\n"
-        )
-    if section == "lock":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔒 **Chat Lock & Control**\n\n"
-            "**Permission-Based Locks:**\n"
-            "`/lock [type] [duration]` — Lock chat by type\n"
-            "`/unlock` — Restore original permissions\n\n"
-            "**Command-Based Locks:**\n"
-            "`/lockbot [duration]` — Block bot commands\n"
-            "`/locklink [duration]` — Block links\n"
-            "`/unlockbot` — Unblock bot commands\n"
-            "`/unlocklink` — Unblock links\n\n"
-            "**Lock Management:**\n"
-            "`/locklist` — View all active locks\n"
-            "`/locktype` — Show lock types\n"
-            "`/locktypelist` — List all types with descriptions\n\n"
-            "**Duration Format:** `10m`, `2h`, `1d`\n\n"
-            "**Examples:**\n"
-            "• `/lock media 2h` - Block media for 2 hours\n"
-            "• `/lock all 30m` - Full lock for 30 minutes\n"
-            "• `/lockbot 1h` - Block bot commands for 1 hour\n"
-            "• `/locklink` - Permanently block links\n"
-            "• `/locklist` - See all active locks\n\n"
-            "**Notes**\n"
-            "• Original permissions are saved and fully restored on unlock.\n"
-            "• Admins are unaffected.\n"
-            "• Timed locks auto-expire.\n"
-        )
-    if section == "locktypes":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔒 **All Available Lock Types**\n\n"
-            "**Global Control:**\n"
-            "• `all` — Block everything (messages + all media)\n"
-            "• `messages` — Block text messages only\n"
-            "• `media` — Block all media at once\n\n"
-            "**Individual Media Types:**\n"
-            "• `photos` — Block photo sharing\n"
-            "• `videos` — Block video sharing\n"
-            "• `audio` — Block audio/music\n"
-            "• `documents` — Block document sharing\n"
-            "• `videonotes` — Block video notes\n"
-            "• `voicenotes` — Block voice notes\n"
-            "• `gifs` — Block GIFs\n\n"
-            "**Interactive Content:**\n"
-            "• `stickers` — Block stickers\n"
-            "• `animations` — Block animations\n"
-            "• `games` — Block games\n"
-            "• `inline` — Block inline content\n"
-            "• `webpages` — Block web page previews\n"
-            "• `polls` — Block polls\n\n"
-            "**Command-Based Locks:**\n"
-            "• `bot` — Block bot commands\n"
-            "• `link` — Block links/URLs\n\n"
-            "**Usage:** `/lock <type> [duration]`\n"
-            "**List all:** `/locktypelist`\n"
-        )
-    if section == "notes":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "📋 **Notes System**\n\n"
-            "`/notes` - List all saved notes for this group\n"
-            "`/save <name> <text>` - Save a note\n"
-            "`/save <name>` (reply) - Save replied content as a note\n"
-            "`/get <name>` or `#name` - Retrieve a note\n"
-            "`/clear <name>` - Delete a note\n\n"
-            "**Usage**\n"
-            "• Use notes to store group rules, FAQs, or information.\n"
-            "• Notes are group-specific and persistent.\n"
-            "• Example: `/save rules We have 3 main rules...`\n"
-            "• Retrieve: `/get rules` or `#rules`\n"
-        )
-    if section == "filters":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔍 **Auto-Response Filters**\n\n"
-            "`/filters` - List all active filters\n"
-            "`/filter <keyword> <response>` - Auto-reply on keyword match\n"
-            "`/filter -exact <keyword> <response>` - Exact word match only\n"
-            "`/filter -start <keyword> <response>` - Starts with keyword\n"
-            "`/filter -regex <pattern> <response>` - Regex pattern matching\n"
-            "`/stop <keyword>` - Remove a filter\n\n"
-            "**Usage**\n"
-            "• Filters auto-respond when keywords are mentioned.\n"
-            "• Example: `/filter hello Hello there! 👋`\n"
-        )
-    if section == "connections":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔗 **Group Connections (Multi-Group Management)**\n\n"
-            "`/connect <chat_id>` - Connect PM to manage a group\n"
-            "`/connections` - View all connected groups and switch\n"
-            "`/disconnect [chat_id|all]` - Disconnect from a group\n"
-            "`/allowconnections yes|no` - Allow/block PM connections\n"
-            "`/broadcast` - Broadcast message to connected groups\n\n"
-            "**Usage**\n"
-            "• Connect PMs to manage multiple groups from one bot instance.\n"
-            "• Each connection has isolated storage (notes, filters, warns, etc.).\n"
-            "• Example: `/connect -1001234567890`\n"
-            "• Get chat_id using `/id` in the target group.\n"
-        )
-    if section == "broadcast":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "📢 **Broadcast Messages**\n\n"
-            "`/broadcast` - Start a broadcast from bot DM\n\n"
-            "**Features**\n"
-            "• Option 1: Broadcast to all connected groups\n"
-            "• Option 2: Broadcast to one specific connected group\n"
-            "• The bot will ask you to reply with the message to send\n"
-            "• Your moderator info is automatically added to the message\n"
-            "• Messages sent with moderator credit\n\n"
-            "**How to Use**\n"
-            "1. Run `/broadcast` in bot DM\n"
-            "2. Choose:\n"
-            "   📢 Broadcast to All Groups\n"
-            "   📤 Broadcast to Specific Group\n"
-            "3. Reply with the message you want to send\n"
-            "4. The message is forwarded to the selected group(s)\n\n"
-            "**Example**\n"
-            "• Important announcement for all groups\n"
-            "• Event notifications\n"
-            "• Policy updates\n"
-        )
-    if section == "blocklist":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔒 **Blocklist System**\n\n"
-            "`/addblocklist <keyword>` - Add a keyword to this group's blocklist\n"
-            "`/deleteblocklist <keyword>` - Remove a blocklist keyword\n"
-            "`/blocklists` - View all blocked keywords for this group\n"
-            "`/blocklistmode [warn|mute|ban]` - Get or set action for blocked keywords\n\n"
-            "**Usage**\n"
-            "• Blocked messages are auto-deleted.\n"
-            "• Action can be: warn (default), mute, or ban user.\n"
-            "• Example: `/addblocklist spam` then `/blocklistmode mute`\n"
-        )
-    if section == "games":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🎮 **Games & Entertainment**\n\n"
-            "`/ttt [user_id]` - Start Tic-Tac-Toe with a user\n"
-            "`/ttt [user_id] 5` - 5x5 board (default 3x3)\n"
-            "`/tttleaderboard` - Show top Tic-Tac-Toe players\n"
-            "`/tttmystats` - Show your game statistics\n"
-            "`/tttend` - Forfeit your active game\n\n"
-            "**Features**\n"
-            "• Play against other users with inline buttons.\n"
-            "• Rankings and stats tracking.\n"
-            "• Games are group-wide or PM-based.\n"
-        )
-    if section == "stats":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "📊 **Moderation Stats & Info**\n\n"
-            "`/stats` - Show moderation statistics (bans, mutes, warns, etc.)\n"
-            "`/mod list` - List all authorized moderators\n"
-            "`/modinfo [user_id]` - View specific moderator's info\n"
-            "`/case <case_id>` - View details of a specific case\n"
-            "`/del` - Delete the replied message\n"
-            "`/id [@user/user_id]` - Get user information & moderation history\n\n"
-            "**Features**\n"
-            "• Track all mod actions in case logs.\n"
-            "• View user info and ban/mute history.\n"
-            "• Monitor moderator activity.\n"
-        )
-    if section == "bot":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🤖 **Bot On/Off Toggle**\n\n"
-            "`/bot` — Check current bot status\n"
-            "`/bot on` — Enable bot (moderators can use all commands)\n"
-            "`/bot off` — Disable bot (owner-only mode)\n\n"
-            "**Behaviour**\n"
-            "• When OFF: only the owner can use any command\n"
-            "• When ON: all moderators have full access as normal\n"
-            "• Status is per-group and persists across restarts\n"
-            "• The `/bot` command itself always works for the owner\n\n"
-            "**Owner only command.**\n"
-        )
-    if section == "auth":
-        return (
-            f"👮 **{role} Help Center**\n\n"
-            "🔐 **Authorization & Permissions**\n\n"
-            "`/auth <user_id>` - Make someone a moderator (Owner only)\n"
-            "`/unauth <user_id>` - Remove moderator status (Owner only)\n"
-            "`/grant <user_id> <perm>` - Grant a specific permission\n"
-            "`/revoke <user_id> <perm>` - Revoke a specific permission\n"
-            "`/freeze <user_id>` - Freeze a moderator's permissions\n"
-            "`/unfreeze <user_id>` - Unfreeze a moderator\n"
-            "`/badge <user_id> <badge_text>` - Set custom moderator badge\n"
-            "`/warnconfig` - Configure auto-action thresholds\n\n"
-            "**Permissions**\n"
-            "• ban, unban, mute, unmute, kick, warn, protect, auth, notes, filters\n"
-        )
-    return (
-        f"👮 **{role} Help Center**\n\n"
-        "**Welcome to Moderation Commands!**\n\n"
-        "Select a category below to learn about each feature:\n\n"
-        "🔨 **Moderation**\n"
-        "  • Ban, Mute, Kick, Warn\n\n"
-        "🛠️ **Management**\n"
-        "  • Protect, Notes, Filters, Blocklist\n\n"
-        "🔧 **Advanced**\n"
-        "  • Connections, Authorization, Stats, Games\n\n"
-        "💡 **Tips:**\n"
-        "  • Reply to a message to avoid typing user IDs\n"
-        "  • Duration: `30m`, `2h`, `1d`, etc.\n"
-        "  • All data is group-specific and persistent\n"
-    )
 
 # =========================================================
 # PYROGRAM CLIENT
@@ -3008,7 +2507,7 @@ async def resolve_log_group(bot: Client):
 
 async def ensure_webhook(base_url: str = None) -> str:
     """Optimized webhook setup with caching and retry logic."""
-    url = os.environ.get("WEBHOOK_URL") or os.environ.get("APP_URL") or base_url
+    url = SENTRIX_CONFIG.webhook_url or base_url
     if not url:
         return "skipped:no-url"
     webhook_url = url.rstrip("/") + "/api/webhook"
@@ -3371,16 +2870,25 @@ class _SentriXPermissions:
         return is_owner(user_id)
 
     async def is_admin(self, chat_id: int, user_id: int) -> bool:
-        return await is_chat_admin(self.bot, chat_id, user_id)
+        return await _permissions.is_admin(chat_id, user_id)
 
-    async def require(self, chat_id: int, user_id: int, permission: str) -> bool:
-        if permission == "owner":
-            return is_owner(user_id)
-        if is_owner(user_id) or await self.is_admin(chat_id, user_id):
+    async def is_group_owner(self, chat_id: int, user_id: int) -> bool:
+        return await _permissions.is_group_owner(chat_id, user_id)
+
+    async def can_manage(self, chat_id: int, user_id: int, permission: str | None = None) -> bool:
+        if int(user_id) < 0:
+            # Telegram represents an anonymous group administrator as the chat sender.
+            return True
+        if await _permissions.can_manage(chat_id, user_id, permission):
             return True
         values = await asyncio.to_thread(load, SENTRIX_FEATURES_FILE)
         admins = values.get(f"sentrix_admins:{chat_id}", {}) if isinstance(values, dict) else {}
         return str(user_id) in admins
+
+    async def require(self, chat_id: int, user_id: int, permission: str) -> bool:
+        if permission == "owner":
+            return await self.is_owner(user_id)
+        return await self.can_manage(chat_id, user_id, permission)
 
 
 _sentrix_registry = build_registry()
@@ -3393,7 +2901,7 @@ def _sentrix_context(bot: Client, msg: dict) -> FeatureContext:
     if _sentrix_store is None:
         _sentrix_store = MappingStore(load, save, SENTRIX_FEATURES_FILE)
     return FeatureContext(
-        config=SentriXConfig.from_env(),
+        config=get_config(),
         store=_sentrix_store,
         telegram=_SentriXTelegramGateway(),
         permissions=_SentriXPermissions(bot),
@@ -3584,7 +3092,7 @@ async def handle_message(bot: Client, msg: dict):
                 # 2a) Blocklist check
                 bkw = blocklist_check(chat_id, text)
                 if bkw:
-                    if not is_protected(uid, chat_id) and uid != OWNER_ID:
+                    if not is_protected(uid, chat_id) and not is_owner(uid):
                         mode = get_blocklist_mode(chat_id)
                         try:
                             await api_delete_msg(chat_id, msg_id)
@@ -3624,72 +3132,11 @@ async def handle_message(bot: Client, msg: dict):
         parts   = text.split(None, 1)
         raw_cmd = parts[0].split("@")[0].lstrip("/").lower()
         command_aliases = {
-            "id": "id",
-            "notes": "notes",
-            "save": "save",
-            "get": "get",
-            "clear": "clear",
-            "filters": "filters",
-            "filter": "filter",
-            "stop": "stop",
-            "connections": "connections",
-            "connect": "connect",
-            "disconnect": "disconnect",
-            "allowconnections": "allowconnections",
-            "broadcast": "broadcast",
-            "mod": "mod",
-            "stats": "stats",
-            "modinfo": "modinfo",
             "warns": "warnings",
-            "resetwarns": "resetwarns",
-            "pin": "pin",
-            "unpin": "unpin",
-            "zombies": "zombies",
-            "protect": "protect",
-            "unprotect": "unprotect",
-            "promote": "promote",
-            "demote": "demote",
-            "adminlist": "adminlist",
-            "admincache": "admincache",
-            "anonadmin": "anonadmin",
-            "adminerror": "adminerror",
-            "case": "case",
-            "appeal": "appeal",
-            "auth": "auth",
-            "unauth": "unauth",
-            "grant": "grant",
-            "revoke": "revoke",
-            "freeze": "freeze",
-            "unfreeze": "unfreeze",
-            "badge": "badge",
-            "warnconfig": "warnconfig",
-            "ban": "ban",
-            "kick": "kick",
-            "mute": "mute",
-            "unban": "unban",
-            "unmute": "unmute",
-            "warn": "warn",
-            "del": "del",
             "unwarn": "resetwarns",
             "warnmode": "warnconfig",
-            "lock": "lock",
-            "unlock": "unlock",
             "locktypes": "locktypelist",
-            "setwelcome": "setwelcome",
-            "welcome": "welcome",
-            "setgoodbye": "setgoodbye",
-            "goodbye": "goodbye",
-            "setrules": "setrules",
-            "rules": "rules",
-            "report": "report",
-            "purge": "purge",
-            "stopall": "stopall",
             "blocklist": "addblocklist",
-            "blocklists": "blocklists",
-            "custom": "custom",
-            "customcommands": "customcommands",
-            "delcustom": "delcustom",
-            "captcha": "captcha",
         }
         raw_cmd = command_aliases.get(raw_cmd, raw_cmd)
         args    = parts[1].split() if len(parts) > 1 else []
@@ -3735,6 +3182,10 @@ async def handle_message(bot: Client, msg: dict):
                 )
             action_chat_id = resolved
 
+        actor_is_group_admin = is_anon_admin
+        if action_chat_id and uid and not is_anon_admin:
+            actor_is_group_admin = await _permissions.is_admin(action_chat_id, uid)
+
         modular_commands = {
             "settings", "admins", "setadmin", "removeadmin", "setup", "reset", "language",
             "antispam", "antiraid", "setflood", "setlog", "unsetlog", "logchannel", "logsettings",
@@ -3771,7 +3222,7 @@ async def handle_message(bot: Client, msg: dict):
             return (not is_anon_admin) and is_owner(uid)
 
         def is_authorized_actor() -> bool:
-            return is_anon_admin or is_authorized(uid)
+            return is_anon_admin or actor_is_group_admin or is_authorized(uid)
 
         def is_frozen_actor() -> bool:
             return False if is_anon_admin else is_frozen(uid)
@@ -3788,6 +3239,8 @@ async def handle_message(bot: Client, msg: dict):
             await tg_delete(chat_id, msg_id)
 
         async def check_mod(perm: str) -> bool:
+            if actor_is_group_admin:
+                return True
             if not is_authorized_actor():
                 await security_fail()
                 return False
@@ -3951,17 +3404,6 @@ async def handle_message(bot: Client, msg: dict):
                 if message:
                     await reply_text(message)
                 return
-            return
-
-        # ── /help ─────────────────────────────────────────────────────────
-        if raw_cmd == "help":
-            if is_anon_admin or is_authorized(uid):
-                await reply_text(
-                    moderation_help_text("home", uid),
-                    markup=moderation_help_markup("home"),
-                )
-            else:
-                await reply_text(role_help_text(uid))
             return
 
         if raw_cmd == "captcha":
@@ -5099,7 +4541,7 @@ async def handle_message(bot: Client, msg: dict):
         # MODERATION COMMANDS
         # ══════════════════════════════════════════════════════════════════
 
-        if raw_cmd in ("ban", "ban", "tban"):
+        if raw_cmd in ("ban", "tban"):
             if not await check_mod("ban"):
                 return
             target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
@@ -5145,7 +4587,7 @@ async def handle_message(bot: Client, msg: dict):
             await send_action_log(chat_id, msg_id, "BAN", target, reason, case_id, actor_mod_info())
             return
 
-        if raw_cmd in ("kick", "kick"):
+        if raw_cmd == "kick":
             if not await check_mod("kick"):
                 return
             target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
@@ -5175,7 +4617,7 @@ async def handle_message(bot: Client, msg: dict):
             await send_action_log(chat_id, msg_id, "KICK", target, reason, case_id, actor_mod_info())
             return
 
-        if raw_cmd in ("mute", "mute", "tmute"):
+        if raw_cmd in ("mute", "tmute"):
             if not await check_mod("mute"):
                 return
             target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
@@ -5222,7 +4664,7 @@ async def handle_message(bot: Client, msg: dict):
             await send_action_log(chat_id, msg_id, "MUTE", target, reason, case_id, actor_mod_info())
             return
 
-        if raw_cmd in ("unban", "unban"):
+        if raw_cmd == "unban":
             if not await check_mod("unban"):
                 return
             target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
@@ -5240,7 +4682,7 @@ async def handle_message(bot: Client, msg: dict):
             await send_action_log(chat_id, msg_id, "UNBAN", target, reason, case_id, actor_mod_info())
             return
 
-        if raw_cmd in ("unmute", "unmute"):
+        if raw_cmd == "unmute":
             if not await check_mod("unmute"):
                 return
             target, tid, terr = await resolve_target_ext(bot, reply, args, 0)
@@ -5908,23 +5350,6 @@ async def handle_callback(bot: Client, cb: dict):
                 await tg_answer_cb(cb_id, f"📋 Note: #{note_name}")
             else:
                 await tg_answer_cb(cb_id, "❌ Note not found.", alert=True)
-            return
-
-        if data.startswith("help_"):
-            if not is_authorized(uid):
-                await tg_answer_cb(cb_id, "⛔ Only moderators can use this.", alert=True)
-                return
-            message_id = message.get("message_id")
-            if not message_id:
-                await tg_answer_cb(cb_id, "❌ Could not update help message.", alert=True)
-                return
-            section = data.split("_", 1)[1]
-            await tg_edit_text(
-                chat_id, message_id,
-                moderation_help_text(section, uid),
-                markup=moderation_help_markup(section),
-            )
-            await tg_answer_cb(cb_id, "✅ Help updated.")
             return
 
         if data == "start_help":

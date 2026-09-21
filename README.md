@@ -497,6 +497,7 @@ API_ID=123456                        # From my.telegram.org
 API_HASH=abcdef...                  # From my.telegram.org
 BOT_TOKEN=123456:ABC...             # From @BotFather
 OWNER_ID=987654321                  # Your Telegram ID
+ADMIN_IDS=123456789,987654321       # Optional full-access SentriX admins
 PORT=8000                           # Server port
 
 # Optional but recommended
@@ -547,6 +548,7 @@ docker run -d \
   -e API_HASH=abcdef \
   -e BOT_TOKEN=123456:ABC \
   -e OWNER_ID=987654321 \
+   -e ADMIN_IDS=123456789,987654321 \
   -e MONGO_URL=mongodb://host:port/db \
   -p 8000:8000 \
   --name sentrix-bot \
@@ -614,6 +616,7 @@ API_ID                          # Telegram API ID
 API_HASH                        # Telegram API Hash
 BOT_TOKEN                       # Bot token from @BotFather
 OWNER_ID                        # Your Telegram user ID
+ADMIN_IDS                       # Comma-separated full-access SentriX admins
 PORT                            # Server port (8000)
 
 # === OPTIONAL ===

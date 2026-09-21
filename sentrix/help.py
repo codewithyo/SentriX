@@ -40,6 +40,7 @@ GUIDES = {
     "unwarn": CommandGuide("/unwarn", "Reset warnings for a user.", "/unwarn <user>", "/unwarn @member", "Moderators with warn permission", "This resets the group warning count.", ("/warn", "/warnings")),
     "warnings": CommandGuide("/warnings", "View a user's warning count.", "/warnings [user]", "/warnings @member", "Everyone; group details may require access", "Reply to a user's message or omit the target for your own count.", ("/warn", "/unwarn")),
     "purge": CommandGuide("/purge", "Delete a bounded range of messages.", "/purge [count]", "Reply to the first message, then /purge 25", "Moderators with delete permission", "The count is limited to protect Telegram API limits.", ("/del",)),
+    "del": CommandGuide("/del", "Delete a replied message.", "/del", "Reply to a message, then /del", "Moderators with delete permission", "Protected users and messages cannot be removed through moderation.", ("/purge",)),
     "antispam": CommandGuide("/antispam", "Toggle automatic spam protection.", "/antispam on|off", "/antispam on", "Group administrators", "Detects flooding, repeated messages, links, mentions, and excessive emoji.", ("/setflood", "/antiraid")),
     "antiraid": CommandGuide("/antiraid", "Toggle raid-oriented protection rules.", "/antiraid on|off", "/antiraid on", "Group administrators", "Combine with verification for new-member protection.", ("/captcha", "/antispam")),
     "captcha": CommandGuide("/captcha", "Require new members to verify themselves.", "/captcha on|off", "/captcha on", "Group administrators", "New members receive an inline Verify Yourself button.", ("/welcome", "/antiraid")),
@@ -69,6 +70,7 @@ GUIDES = {
     "connect": CommandGuide("/connect", "Connect a group for PM management.", "/connect <chat_id>", "/connect -1001234567890", "Authorized moderators", "Use /connection to inspect connection help.", ("/disconnect",)),
     "disconnect": CommandGuide("/disconnect", "Remove a group connection.", "/disconnect [chat_id|all]", "/disconnect all", "Authorized moderators", "Run in the bot private chat.", ("/connect",)),
     "connection": CommandGuide("/connection", "Show connection management help.", "/connection", "/connection", "Everyone", "Use /connections for the current list.", ("/connect", "/disconnect")),
+    "connections": CommandGuide("/connections", "List and switch connected groups.", "/connections", "/connections", "Authorized moderators", "Run in the bot private chat.", ("/connect", "/disconnect")),
     "id": CommandGuide("/id", "Show a Telegram user or chat ID.", "/id [user]", "/id me", "Everyone", "Reply to a message or provide a username.", ("/info",)),
     "info": CommandGuide("/info", "Show basic SentriX chat information.", "/info", "/info", "Everyone", "Detailed moderation statistics use /stats.", ("/stats", "/id")),
     "admins": CommandGuide("/admins", "List SentriX-specific admins.", "/admins", "/admins", "Everyone", "SentriX admins do not receive Telegram admin privileges.", ("/adminlist", "/setadmin")),
@@ -147,14 +149,14 @@ for _command, (_description, _syntax) in _ADDITIONAL_GUIDES.items():
 
 
 CATEGORIES = (
-    HelpCategory("admin", "👮 Admin", "Moderate members and manage administrators.", ("promote", "demote", "adminlist", "setadmin", "removeadmin", "admincache", "auth", "unauth", "grant", "revoke", "freeze", "unfreeze", "badge", "ban", "tban", "unban", "kick", "kickme", "mute", "tmute", "unmute", "warn", "unwarn", "warnings", "warns", "resetwarns", "warnconfig", "warnmode", "purge", "pin", "unpin", "protect", "unprotect", "protected", "case", "mod", "modinfo", "anonadmin", "adminerror", "zombies")),
+    HelpCategory("admin", "👮 Admin", "Moderate members and manage administrators.", ("promote", "demote", "adminlist", "setadmin", "removeadmin", "admincache", "auth", "unauth", "grant", "revoke", "freeze", "unfreeze", "badge", "ban", "tban", "unban", "kick", "kickme", "mute", "tmute", "unmute", "warn", "unwarn", "warnings", "warns", "resetwarns", "warnconfig", "warnmode", "del", "purge", "pin", "unpin", "protect", "unprotect", "protected", "case", "mod", "modinfo", "anonadmin", "adminerror", "zombies")),
     HelpCategory("protection", "🛡️ Protection", "Protect your group from spam, raids, and unwanted content.", ("antispam", "antiraid", "captcha", "setflood", "lock", "unlock", "locktype", "locktypes", "locktypelist", "locklist", "lockbot", "locklink", "unlockbot", "unlocklink", "addblocklist", "blocklist", "deleteblocklist", "blocklists", "blocklistmode", "bot")),
     HelpCategory("welcome", "👋 Welcome", "Configure join and leave messages.", ("welcome", "setwelcome", "goodbye", "setgoodbye")),
     HelpCategory("filters", "📝 Filters", "Create and manage automatic keyword replies.", ("filter", "filters", "stop", "stopall")),
     HelpCategory("notes", "📚 Notes", "Save reusable group information.", ("save", "get", "notes", "clear")),
     HelpCategory("logging", "📢 Logging", "Configure the dedicated admin log channel.", ("setlog", "unsetlog", "logchannel", "logsettings", "broadcast")),
     HelpCategory("setup", "⚙️ Setup", "Configure the current group interactively.", ("setup", "settings", "rules", "setrules", "reset", "language")),
-    HelpCategory("connections", "🔗 Connections", "Manage groups from the bot private chat.", ("connect", "disconnect", "connection", "allowconnections")),
+    HelpCategory("connections", "🔗 Connections", "Manage groups from the bot private chat.", ("connect", "connections", "disconnect", "connection", "allowconnections")),
     HelpCategory("info", "📊 Information", "Inspect IDs, admins, reports, statistics, games, and appeals.", ("id", "info", "admins", "stats", "report", "appeal", "ttt", "tttleaderboard", "tttmystats", "tttend")),
     HelpCategory("bot", "🤖 Bot", "SentriX status and discovery commands.", ("start", "help", "about", "ping", "features", "custom", "customcommands", "delcustom")),
 )
@@ -172,8 +174,8 @@ def _nav(*buttons):
 
 def home_markup():
     rows = []
-    for index in range(0, len(CATEGORIES), 2):
-        rows.append(_nav(*[(item.title, f"sxhelp_cat_{item.key}_0") for item in CATEGORIES[index:index + 2]]))
+    for index in range(0, len(CATEGORIES), 3):
+        rows.append(_nav(*[(item.title, f"sxhelp_cat_{item.key}_0") for item in CATEGORIES[index:index + 3]]))
     rows.append(_nav(("📖 Guides", "sxhelp_guides_0")))
     rows.append(_nav(("↩️ Back", "sxhelp_home"), ("🏠 Home", "sxhelp_home"), ("✖️ Close", "sxhelp_close")))
     return {"inline_keyboard": rows}
@@ -190,7 +192,12 @@ def category_page(category_key: str, page: int = 0):
     page_count = max(1, (len(category.commands) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, page_count - 1))
     current = category.commands[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
-    rows = [[{"text": f"/{name}", "callback_data": f"sxhelp_cmd_{category.key}_{name}"}] for name in current]
+    rows = []
+    for index in range(0, len(current), 3):
+        rows.append([
+            {"text": f"/{name}", "callback_data": f"sxhelp_cmd_{category.key}_{name}"}
+            for name in current[index:index + 3]
+        ])
     navigation = []
     if page > 0:
         navigation.append(("⬅️ Prev", f"sxhelp_cat_{category.key}_{page - 1}"))
@@ -208,7 +215,13 @@ def guides_page(page: int = 0):
     titles = {"getting_started": "🚀 Getting Started", "group_setup": "⚙️ Group Setup", "log_channel": "📢 Log Channel Setup", "moderation": "👮 Moderation", "anti_spam": "🛡️ Anti-Spam", "welcome": "👋 Welcome", "verification": "🔐 Verification", "filters": "📝 Filters", "locks": "🔒 Locks"}
     page_count = max(1, (len(guides) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, page_count - 1))
-    rows = [[{"text": titles[key], "callback_data": f"sxhelp_guide_{key}"}] for key in guides[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]]
+    current = guides[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+    rows = []
+    for index in range(0, len(current), 3):
+        rows.append([
+            {"text": titles[key], "callback_data": f"sxhelp_guide_{key}"}
+            for key in current[index:index + 3]
+        ])
     navigation = []
     if page > 0:
         navigation.append(("⬅️ Prev", f"sxhelp_guides_{page - 1}"))

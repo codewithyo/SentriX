@@ -162,13 +162,13 @@ MODERATION_COMMANDS = {
     "setup", "reset", "language", "antispam", "antiraid", "setflood",
     "setlog", "unsetlog", "logchannel", "logsettings", "connection", "info",
 }
-ACTION_LOG_AUTO_DELETE = 600  # seconds
+ACTION_LOG_AUTO_DELETE = 86400  # seconds
 
 # FIX-K: Commands whose replies should NOT be auto-deleted (users need to read them)
 _NO_AUTODELETE_CMDS = {
     "notes", "filters", "blocklists", "rules", "mod", "stats",
     "protected", "case", "modinfo", "help", "id", "warns",
-    "connections", "bans", "mutes", "broadcast",
+    "connections", "bans", "mutes", "broadcast", "zombies"
 }
 
 # =========================================================

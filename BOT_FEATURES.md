@@ -18,7 +18,7 @@
 | `/pin` | Pin replied message | `/pin` (reply only) |
 | `/unpin` | Unpin current pinned message | `/unpin` |
 | `/adminlist` | Show all group admins | `/adminlist` |
-| `/zombies` | Scan and kick deleted/bot accounts | `/zombies` |
+| `/zombies` | Scan and kick Telegram-confirmed deleted accounts | `/zombies` |
 | `/warn` | Issue warning | `/warn @user [reason]` |
 | `/del` | Delete message | `/del <message_id>` |
 | `/case` | View case details | `/case <case_id>` |
@@ -27,7 +27,7 @@
 | `/pin` | Pin replied message | `/pin` (reply only) |
 | `/unpin` | Unpin current pinned message | `/unpin` |
 | `/adminlist` | Show all group admins | `/adminlist` |
-| `/zombies` | Scan and kick deleted/bot accounts | `/zombies` |
+| `/zombies` | Scan and kick Telegram-confirmed deleted accounts | `/zombies` |
 
 ### Owner Commands (Administrator Only)
 | Command | Description | Usage |

@@ -2382,32 +2382,33 @@ async def demote_admin(bot: Client, chat_id: int, user_id: int) -> tuple[bool, s
     except Exception as exc:
         return False, f"❌ Failed to demote: {exc}"
 
-async def scan_zombies(bot: Client, chat_id: int, bot_id: int) -> tuple[int, int, list[str]]:
+async def scan_zombies(bot: Client, chat_id: int, bot_id: int) -> tuple[int, list[str]]:
     kicked_deleted = 0
-    kicked_bots    = 0
     failures: list[str] = []
-    async for member in bot.get_chat_members(chat_id):
-        user = getattr(member, "user", None)
-        if not user:
-            continue
-        if member.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
-            continue
-        if user.id == bot_id:
-            continue
-        first_name = (getattr(user, "first_name", "") or "").strip()
-        is_deleted = (
-            bool(getattr(user, "is_deleted", False))
-            or first_name.lower() == "deleted account"
-            or first_name.lower().startswith("deleted")
-        )
-        if not is_deleted:
-            continue
-        ok, err = await api_kick(chat_id, user.id)
-        if ok:
-            kicked_deleted += 1
-        else:
-            failures.append(f"{user.id}: {err}")
-    return kicked_deleted, kicked_bots, failures
+    try:
+        async for member in bot.get_chat_members(chat_id):
+            user = getattr(member, "user", None)
+            if not user:
+                continue
+            if member.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
+                continue
+            if user.id == bot_id or getattr(user, "is_deleted", False) is not True:
+                continue
+            try:
+                ok, err = await api_kick(chat_id, user.id)
+            except Exception as e:
+                failures.append(f"{user.id}: {e}")
+                continue
+            if ok:
+                kicked_deleted += 1
+            else:
+                failures.append(f"{user.id}: {err}")
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log_msg(f"Zombie scan failed for chat {chat_id}: {e}", "ERROR")
+        failures.append(f"Scan error: {e}")
+    return kicked_deleted, failures
 
 def schedule_temp_action(
     action_type: str, chat_id: int, target_id: int,
@@ -4870,13 +4871,16 @@ async def handle_message(bot: Client, msg: dict):
             if await anti_nuke(chat_id, msg_id, uid, is_anon=is_anon_admin):
                 return
             await reply_text("🔎 Scanning for deleted accounts...")
-            kicked_deleted, kicked_bots, failures = await scan_zombies(bot, action_chat_id, _active_bot_id())
+            kicked_deleted, failures = await scan_zombies(bot, action_chat_id, _active_bot_id())
             summary = (
                 f"🧟 Zombie scan complete\n"
                 f"• Deleted accounts kicked: `{kicked_deleted}`"
             )
             if failures:
                 summary += f"\n• Failures: `{len(failures)}`"
+                summary += "\n" + "\n".join(f"  {failure[:180]}" for failure in failures[:3])
+                if len(failures) > 3:
+                    summary += f"\n  ...and {len(failures) - 3} more"
             await reply_text(summary)
             return
 

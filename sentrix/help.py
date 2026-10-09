@@ -106,7 +106,7 @@ _ADDITIONAL_GUIDES = {
     "removeadmin": ("Remove SentriX-specific admin access.", "/removeadmin <user_id>"),
     "anonadmin": ("Configure anonymous administrator mode.", "/anonadmin on|off"),
     "adminerror": ("Configure administrator error replies.", "/adminerror on|off"),
-    "zombies": ("Scan for deleted or bot accounts.", "/zombies"),
+    "zombies": ("Scan for Telegram-confirmed deleted accounts.", "/zombies"),
     "protect": ("Protect a user from moderation actions.", "/protect <user>"),
     "unprotect": ("Remove moderation protection from a user.", "/unprotect <user>"),
     "protected": ("List protected users.", "/protected"),

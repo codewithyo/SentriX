@@ -24,8 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 from pyrogram import Client, enums
 from pyrogram.errors import BadRequest, UserNotParticipant
@@ -233,7 +232,6 @@ Path(FALLBACK_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
 
 _cache = DataCache(ttl_seconds=300)  # 5-minute TTL for most data
 _log_group_cache = DataCache(ttl_seconds=3600)  # 1-hour TTL for log group
-_webhook_dedup = {}  # Webhook deduplication for request IDs
 _automod_activity = {}  # (chat_id, user_id) -> recent message timestamps
 _automod_last_text = {}  # (chat_id, user_id) -> (text, timestamp)
 _pending_verification = {}  # (chat_id, user_id) -> created timestamp
@@ -2574,13 +2572,8 @@ async def resolve_log_group(bot: Client):
         log_msg(f"Auto-detected log group: {_log_group_id}", "INFO")
 
 # =========================================================
-# WEBHOOK
+# POLLING SETUP
 # =========================================================
-
-async def ensure_webhook(base_url: str = None) -> str:
-    """Remove an existing webhook so updates can be received by long polling."""
-    result = await tg_api("deleteWebhook", json={"drop_pending_updates": False})
-    return "polling" if result.get("ok") else f"error:{result.get('description')}"
 
 async def sync_commands(token: str = None) -> str:
     result = await tg_api("setMyCommands", token=token, json={"commands": BOT_COMMANDS})
@@ -2815,7 +2808,7 @@ async def root():
     return {
         "service":   "Telegram Moderation Bot",
         "status":    "running" if bot_ready else "starting",
-        "endpoints": ["/health", "/api/status", "/api/webhook"],
+        "endpoints": ["/health", "/api/status"],
     }
 
 @app.get("/health")
@@ -2838,61 +2831,14 @@ async def bot_status():
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-@app.get("/api/setup_webhook")
-async def setup_webhook_endpoint():
-    return {
-        "polling": await ensure_webhook(),
-        "commands": await sync_commands(),
-        "info": await tg_api("getWebhookInfo"),
-    }
-
 @app.get("/api/diagnostics")
 async def diagnostics_endpoint():
     """Performance diagnostics and cache statistics."""
     return {
         "cache_stats": _cache.stats(),
         "log_group_cache": _log_group_cache.stats(),
-        "webhook_dedup_size": len(_webhook_dedup),
         "timestamp": datetime.now().isoformat(),
     }
-
-@app.post("/api/webhook")
-async def webhook(request: Request):
-    """Optimized webhook handler with deduplication and async processing."""
-    global _webhook_dedup
-    try:
-        update = await request.json()
-        if not isinstance(update, dict):
-            return JSONResponse({"ok": False}, status_code=400)
-        
-        # Request deduplication using update_id
-        update_id = update.get("update_id")
-        if update_id and update_id in _webhook_dedup:
-            return JSONResponse({"ok": True}, status_code=200)
-
-        # Mark as processed and schedule cleanup
-        if update_id:
-            _webhook_dedup[update_id] = time.time()
-            # Cleanup old entries (every 100 requests)
-            if len(_webhook_dedup) % 100 == 0:
-                cutoff = time.time() - 60
-                _webhook_dedup = {k: v for k, v in _webhook_dedup.items() if v > cutoff}
-        
-        # Get bot instance
-        bot = await get_bot()
-        
-        # Process message and callback in parallel when both present
-        tasks = []
-        if "message" in update:
-            tasks.append(handle_message(bot, update["message"]))
-        if "callback_query" in update:
-            tasks.append(handle_callback(bot, update["callback_query"]))
-        
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-    except Exception as e:
-        log_msg(f"webhook error: {e}\n{traceback.format_exc()}", "ERROR")
-    return JSONResponse({"ok": True}, status_code=200)
 
 async def bot_poll_worker(token: str):
     """Keep one bot's Bot API long-poll loop alive independently."""

@@ -508,8 +508,7 @@ curl http://localhost:8000/api/status
 ```
 
 Check that `BOT_TOKEN` (or `BOT_TOKENS`) is correct, the bot has admin
-permissions in the group, and startup logs show no polling errors. The process
-removes any existing webhook before polling.
+permissions in the group, and startup logs show no polling errors.
 </details>
 
 <details>

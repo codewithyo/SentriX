@@ -23,7 +23,6 @@ class SentriXConfig:
     owner_debug_notifications: bool = False
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db_name: str = "hr_moderation_bot"
-    webhook_url: str = ""
     bot_tokens: tuple[str, ...] = ()
 
     @classmethod
@@ -56,7 +55,6 @@ class SentriXConfig:
             owner_debug_notifications=os.getenv("OWNER_DEBUG_NOTIFICATIONS", "0") == "1",
             mongodb_uri=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
             mongodb_db_name=os.getenv("MONGODB_DB_NAME", "hr_moderation_bot"),
-            webhook_url=os.getenv("WEBHOOK_URL") or os.getenv("APP_URL", ""),
             bot_tokens=configured_tokens,
         )
 

@@ -7,7 +7,7 @@ tgcrypto
 # Web framework — receives webhook updates from Telegram
 fastapi
 
-# HTTP client — used in /api/setup_webhook to call Telegram Bot API
+# HTTP client — used for Telegram Bot API calls and long polling
 httpx
 
 # ASGI server for local runs and container startup

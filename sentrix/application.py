@@ -18,6 +18,7 @@
 # =========================================================
 
 import os, json, time, random, string, asyncio, httpx, re
+import os, json, time, random, string, asyncio, httpx, re, contextvars
 import traceback, sys, shutil, io, threading
 import logging as std_logging
 from datetime import datetime
@@ -40,6 +41,7 @@ from games import (
     games_cleanup_worker,
     shutdown_games,
     TTT_CALLBACK_PREFIXES,
+    set_current_bot_token,
 )
 from sentrix.config import SentriXConfig, get_config
 from sentrix.context import FeatureContext
@@ -187,6 +189,7 @@ SENTRIX_CONFIG = get_config()
 API_ID       = SENTRIX_CONFIG.api_id
 API_HASH     = SENTRIX_CONFIG.api_hash
 BOT_TOKEN    = SENTRIX_CONFIG.bot_token
+BOT_TOKENS   = SENTRIX_CONFIG.bot_tokens or ((BOT_TOKEN,) if BOT_TOKEN else ())
 OWNER_ID     = SENTRIX_CONFIG.owner_id
 LOG_GROUP_ID = SENTRIX_CONFIG.log_group_id
 PORT         = SENTRIX_CONFIG.port
@@ -626,7 +629,7 @@ async def get_http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
         _http_client = httpx.AsyncClient(
-            timeout=15,
+            timeout=70,
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         )
     return _http_client
@@ -635,11 +638,18 @@ async def get_http_client() -> httpx.AsyncClient:
 # BOT API HELPER
 # =========================================================
 
+_bot_token_context = contextvars.ContextVar("sentrix_bot_token", default=None)
+_bot_id_context = contextvars.ContextVar("sentrix_bot_id", default=0)
+
+def _active_bot_id() -> int:
+    return _bot_id_context.get() or _bot_id
+
 async def tg_api(method: str, **kwargs) -> dict:
+    token = kwargs.pop("token", None) or _bot_token_context.get() or BOT_TOKEN
     try:
         client = await get_http_client()
         resp = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+            f"https://api.telegram.org/bot{token}/{method}",
             **kwargs,
         )
         return resp.json()
@@ -1020,9 +1030,10 @@ async def upload_backup(label: str, data) -> bool:
         return False
     try:
         content = json.dumps(data, indent=2).encode()
+        token = _bot_token_context.get() or BOT_TOKEN
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument",
+                f"https://api.telegram.org/bot{token}/sendDocument",
                 data={"chat_id": backup_chat, "caption": f"MODBOT_BACKUP:{label}"},
                 files={"document": (f"{label}.json", io.BytesIO(content), "application/json")},
             )
@@ -2459,33 +2470,50 @@ def build_markup(*rows) -> dict:
 _bot: Client       = None
 _bot_id: int       = 0
 bot_ready: bool    = False
+_bot_clients: dict[str, Client] = {}
+_bot_client_locks: dict[str, asyncio.Lock] = {}
+_bot_poll_tasks: dict[str, asyncio.Task] = {}
 _temp_worker_task  = None
 _games_worker_task = None
 
-async def get_bot() -> Client:
+async def get_bot(token: str = None) -> Client:
     global _bot, bot_ready, _bot_id
-    if _bot is None or not _bot.is_connected:
-        log_msg("Initializing Pyrogram client...", "INFO")
-        _bot = Client(
-            name="modbot", api_id=API_ID, api_hash=API_HASH,
-            bot_token=BOT_TOKEN, in_memory=True, no_updates=True,
-        )
-        await _bot.start()
-        bot_ready = True
-        me = await _bot.get_me()
-        _bot_id = me.id
-        log_msg(f"✅ Authenticated as @{me.username} (id={_bot_id})", "INFO")
-    return _bot
+    token = token or _bot_token_context.get() or BOT_TOKEN
+    if not token:
+        raise RuntimeError("No Telegram bot token is configured")
+    lock = _bot_client_locks.setdefault(token, asyncio.Lock())
+    async with lock:
+        client = _bot_clients.get(token)
+        if client is None or not client.is_connected:
+            index = BOT_TOKENS.index(token) if token in BOT_TOKENS else len(_bot_clients)
+            client = Client(
+                name=f"modbot_{index}", api_id=API_ID, api_hash=API_HASH,
+                bot_token=token, in_memory=True, no_updates=True,
+            )
+            await client.start()
+            _bot_clients[token] = client
+            me = await client.get_me()
+            if token == BOT_TOKEN:
+                _bot = client
+                _bot_id = me.id
+            bot_ready = True
+            log_msg(f"✅ Authenticated bot @{me.username} (id={me.id})", "INFO")
+        return client
 
-async def shutdown_bot():
+async def shutdown_bot(token: str = None):
     global _bot, bot_ready
-    if _bot:
+    tokens = [token] if token else list(_bot_clients)
+    for current_token in tokens:
+        client = _bot_clients.pop(current_token, None)
+        if not client:
+            continue
         try:
-            await _bot.stop()
+            await client.stop()
         except Exception:
             pass
-        _bot      = None
-        bot_ready = False
+        if current_token == BOT_TOKEN:
+            _bot = None
+    bot_ready = any(client.is_connected for client in _bot_clients.values())
 
 # =========================================================
 # LOG GROUP
@@ -2551,40 +2579,12 @@ async def resolve_log_group(bot: Client):
 # =========================================================
 
 async def ensure_webhook(base_url: str = None) -> str:
-    """Optimized webhook setup with caching and retry logic."""
-    url = SENTRIX_CONFIG.webhook_url or base_url
-    if not url:
-        return "skipped:no-url"
-    webhook_url = url.rstrip("/") + "/api/webhook"
-    
-    # Check cached webhook status
-    cached_status = _cache.get("webhook_url")
-    if cached_status == webhook_url:
-        return "ok:cached"
-    
-    info = await tg_api("getWebhookInfo")
-    if info.get("result", {}).get("url") == webhook_url:
-        _cache.set("webhook_url", webhook_url)
-        return "ok:already-set"
-    
-    # Retry logic for webhook setup
-    max_retries = 3
-    for attempt in range(max_retries):
-        result = await tg_api("setWebhook", json={
-            "url": webhook_url,
-            "allowed_updates": ["message", "callback_query"],
-            "drop_pending_updates": False,
-        })
-        if result.get("ok"):
-            _cache.set("webhook_url", webhook_url)
-            return f"ok:set:{webhook_url}"
-        if attempt < max_retries - 1:
-            await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
-    
-    return f"error:{result.get('description')}"
+    """Remove an existing webhook so updates can be received by long polling."""
+    result = await tg_api("deleteWebhook", json={"drop_pending_updates": False})
+    return "polling" if result.get("ok") else f"error:{result.get('description')}"
 
-async def sync_commands() -> str:
-    result = await tg_api("setMyCommands", json={"commands": BOT_COMMANDS})
+async def sync_commands(token: str = None) -> str:
+    result = await tg_api("setMyCommands", token=token, json={"commands": BOT_COMMANDS})
     return "ok" if result.get("ok") else f"error:{result.get('description')}"
 
 # =========================================================
@@ -2831,6 +2831,8 @@ async def bot_status():
         return {
             "status": "running", "bot_id": me.id,
             "bot_username": me.username,
+            "bots": len(_bot_clients),
+            "polling": len(_bot_poll_tasks),
             "log_group_id": get_log_group(),
             "timestamp": datetime.now().isoformat(),
         }
@@ -2840,9 +2842,9 @@ async def bot_status():
 @app.get("/api/setup_webhook")
 async def setup_webhook_endpoint():
     return {
-        "set_webhook": await ensure_webhook(),
-        "commands":    await sync_commands(),
-        "info":        await tg_api("getWebhookInfo"),
+        "polling": await ensure_webhook(),
+        "commands": await sync_commands(),
+        "info": await tg_api("getWebhookInfo"),
     }
 
 @app.get("/api/diagnostics")
@@ -2868,7 +2870,7 @@ async def webhook(request: Request):
         update_id = update.get("update_id")
         if update_id and update_id in _webhook_dedup:
             return JSONResponse({"ok": True}, status_code=200)
-        
+
         # Mark as processed and schedule cleanup
         if update_id:
             _webhook_dedup[update_id] = time.time()
@@ -2892,6 +2894,58 @@ async def webhook(request: Request):
     except Exception as e:
         log_msg(f"webhook error: {e}\n{traceback.format_exc()}", "ERROR")
     return JSONResponse({"ok": True}, status_code=200)
+
+async def bot_poll_worker(token: str):
+    """Keep one bot's Bot API long-poll loop alive independently."""
+    offset = 0
+    retry_delay = 1
+    _bot_token_context.set(token)
+    set_current_bot_token(token)
+    while True:
+        try:
+            bot = await get_bot(token)
+            me = await bot.get_me()
+            _bot_id_context.set(me.id)
+            removed = await tg_api(
+                "deleteWebhook", token=token,
+                json={"drop_pending_updates": False},
+            )
+            if not removed.get("ok"):
+                raise RuntimeError(removed.get("description", "deleteWebhook failed"))
+            command_status = await sync_commands(token)
+            if not command_status.startswith("ok"):
+                log_msg(f"setMyCommands failed for bot: {command_status}", "WARNING")
+            retry_delay = 1
+            while True:
+                response = await tg_api(
+                    "getUpdates", token=token,
+                    json={
+                        "offset": offset,
+                        "timeout": 50,
+                        "allowed_updates": ["message", "callback_query"],
+                    },
+                    timeout=60,
+                )
+                if not response.get("ok"):
+                    raise RuntimeError(response.get("description", "getUpdates failed"))
+                for update in response.get("result", []):
+                    update_id = update.get("update_id")
+                    try:
+                        if "message" in update:
+                            await handle_message(bot, update["message"])
+                        if "callback_query" in update:
+                            await handle_callback(bot, update["callback_query"])
+                    except Exception:
+                        log_msg(f"Update processing failed for bot: {traceback.format_exc()}", "ERROR")
+                    if isinstance(update_id, int):
+                        offset = max(offset, update_id + 1)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log_msg(f"Bot polling disconnected; retrying in {retry_delay}s: {e}", "ERROR")
+            await shutdown_bot(token)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 30)
 # =========================================================
 # SENTRIX MODULAR FEATURE BRIDGE
 # =========================================================
@@ -2983,7 +3037,7 @@ async def handle_message(bot: Client, msg: dict):
                 for member in new_members:
                     if not isinstance(member, dict):
                         continue
-                    if member.get("id") == _bot_id:
+                    if member.get("id") == _active_bot_id():
                         continue
                     rendered = _format_welcome_text(welcome_text, member, chat_name) if welcome_text and welcome_on else ""
                     member_id = member.get("id")
@@ -3003,7 +3057,7 @@ async def handle_message(bot: Client, msg: dict):
 
             left_member = msg.get("left_chat_member")
             if isinstance(left_member, dict):
-                if left_member.get("id") != _bot_id:
+                if left_member.get("id") != _active_bot_id():
                     goodbye_entry = _goodbye_for_chat(chat_id)
                     goodbye_text  = goodbye_entry.get("text") if isinstance(goodbye_entry, dict) else None
                     goodbye_on    = goodbye_entry.get("enabled", True) if isinstance(goodbye_entry, dict) else False
@@ -3020,7 +3074,7 @@ async def handle_message(bot: Client, msg: dict):
         # ── Non-command messages: filters + #note triggers ────────────────
         if not text.startswith("/"):
             # Handle broadcast messages in private chat
-            if is_private and text and uid != _bot_id:
+            if is_private and text and uid != _active_bot_id():
                 broadcast_state = get_broadcast_state(uid)
                 if broadcast_state:
                     broadcast_type = broadcast_state.get("type")
@@ -3058,7 +3112,7 @@ async def handle_message(bot: Client, msg: dict):
             if not is_private and text:
                 sender = msg.get("from") or {}
                 sender_is_bot = bool(sender.get("is_bot"))
-                if uid and not sender_is_bot and uid != _bot_id:
+                if uid and not sender_is_bot and uid != _active_bot_id():
                     key = (chat_id, uid)
                     now = time.monotonic()
                     activity = [stamp for stamp in _automod_activity.get(key, []) if now - stamp <= 3]
@@ -4583,7 +4637,7 @@ async def handle_message(bot: Client, msg: dict):
                 return await reply_text(f"{terr}\nUsage: /{cmd_name} <user_id/@user> [duration] [reason]")
             if not is_anon_admin and tid == uid:
                 return await reply_text("❌ You cannot ban yourself.")
-            if tid == _bot_id:
+            if tid == _active_bot_id():
                 return await reply_text("❌ I can't ban myself!")
             member, gm_err = await get_chat_member_safe(bot, action_chat_id, tid)
             if gm_err:
@@ -4677,7 +4731,7 @@ async def handle_message(bot: Client, msg: dict):
                     return await reply_text(gm_err)
             if member.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
                 return await reply_text("Afraid I can't stop an admin from talking!")
-            if tid == _bot_id:
+            if tid == _active_bot_id():
                 return await reply_text("I'm not muting myself!")
             if is_protected(tid, action_chat_id):
                 return await reply_text("🛡 That user is protected.")
@@ -4864,7 +4918,7 @@ async def handle_message(bot: Client, msg: dict):
             if await anti_nuke(chat_id, msg_id, uid, is_anon=is_anon_admin):
                 return
             await reply_text("🔎 Scanning for deleted accounts...")
-            kicked_deleted, kicked_bots, failures = await scan_zombies(bot, action_chat_id, _bot_id)
+            kicked_deleted, kicked_bots, failures = await scan_zombies(bot, action_chat_id, _active_bot_id())
             summary = (
                 f"🧟 Zombie scan complete\n"
                 f"• Deleted accounts kicked: `{kicked_deleted}`"
@@ -5560,28 +5614,42 @@ async def startup_event():
     global _temp_worker_task, _games_worker_task
     log_msg("🚀 Starting up...", "INFO")
     try:
-        mongo_db.connect()
-        sync_storage_with_mongo()
-        verify_storage_restored()
-        bot = await get_bot()
+        if not BOT_TOKENS:
+            raise RuntimeError("Set BOT_TOKEN or BOT_TOKENS to start a bot")
+
+        try:
+            mongo_db.connect()
+            sync_storage_with_mongo()
+            verify_storage_restored()
+        except Exception as e:
+            log_msg(f"Storage initialization failed; continuing with local fallback: {e}", "WARNING")
 
         init_games(
             save_fn=save, load_fn=load,
             scores_file=TTT_SCORES_FILE, bot_token=BOT_TOKEN,
         )
 
-        await resolve_log_group(bot)
+        for token in BOT_TOKENS:
+            task = _bot_poll_tasks.get(token)
+            if task is None or task.done():
+                _bot_poll_tasks[token] = asyncio.create_task(bot_poll_worker(token))
 
         restored = 0
-        if _tg_backup_enabled and get_backup_chat() != 0:
-            restored = await restore_from_telegram_pyrogram(bot)
-            if restored:
-                log_msg(f"✅ Restored {restored} file(s) from Telegram backup", "INFO")
-        else:
-            log_msg("Telegram backup restore skipped: log group not configured.", "INFO")
+        try:
+            bot = await get_bot(BOT_TOKEN)
+            _bot_token_context.set(BOT_TOKEN)
+            set_current_bot_token(BOT_TOKEN)
+            await resolve_log_group(bot)
+            if _tg_backup_enabled and get_backup_chat() != 0:
+                restored = await restore_from_telegram_pyrogram(bot)
+                if restored:
+                    log_msg(f"✅ Restored {restored} file(s) from Telegram backup", "INFO")
+            else:
+                log_msg("Telegram backup restore skipped: log group not configured.", "INFO")
+        except Exception as e:
+            log_msg(f"Primary bot initialization deferred to polling worker: {e}", "WARNING")
 
-        wh_status  = await ensure_webhook()
-        cmd_status = await sync_commands()
+        cmd_status = "polling"
 
         if _temp_worker_task is None or _temp_worker_task.done():
             _temp_worker_task = asyncio.create_task(temp_action_worker())
@@ -5594,7 +5662,7 @@ async def startup_event():
             f"🖥 Port: `{PORT}`\n"
             f"💾 Storage: `{STORAGE_PATH}`\n"
             f"📋 Log group: `{lg}`\n"
-            f"🔗 Webhook: `{wh_status}`\n"
+            f"🤖 Bots: `{len(BOT_TOKENS)}` (long polling)\n"
             f"📌 Commands: `{cmd_status}`\n"
             f"📦 Restored files: `{restored}`"
         )
@@ -5610,13 +5678,15 @@ async def startup_event():
 async def shutdown_event():
     global _temp_worker_task, _games_worker_task, _http_client
     log_msg("🛑 Shutting down...", "INFO")
-    for task in (_temp_worker_task, _games_worker_task):
+    tasks = [*_bot_poll_tasks.values(), _temp_worker_task, _games_worker_task]
+    for task in tasks:
         if task and not task.done():
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
+    _bot_poll_tasks.clear()
     await shutdown_bot()
     await shutdown_games()
     if _http_client:

@@ -356,6 +356,7 @@ cp .env.example .env
 API_ID=                          # From my.telegram.org
 API_HASH=                        # From my.telegram.org
 BOT_TOKEN=                       # From @BotFather
+BOT_TOKENS=                      # Optional extra tokens, comma-separated
 OWNER_ID=                        # Your Telegram user ID
 SENTRIX_BOT_USERNAME=hr_sentrix_bot
 
@@ -373,6 +374,10 @@ PORT=8000
 STORAGE_PATH=/data/modbot
 OWNER_DEBUG_NOTIFICATIONS=0
 ```
+
+The bot connects to Telegram using long polling. A public URL, webhook, domain,
+or SSL certificate is not required. Set `BOT_TOKENS` to run additional bots in
+the same process; each token gets its own client and polling loop.
 
 ### 3. Run
 
@@ -423,7 +428,7 @@ docker run -d \
 |----------|--------------|
 | **Koyeb** (Recommended) | Push to GitHub → Connect repo → Set env vars → Deploy |
 | **Render** | Connect GitHub → Set env vars → Auto-restart enabled |
-| **Railway** | Link GitHub → Select repo → Add env vars → One-click |
+| **Railway** | Link GitHub → Select repo → Add env vars → Deploy |
 
 ---
 
@@ -500,10 +505,11 @@ pymongo>=4.0         # MongoDB driver
 
 ```bash
 curl http://localhost:8000/api/status
-curl http://localhost:8000/api/setup_webhook
 ```
 
-Check bot has admin permissions in the group and `BOT_TOKEN` is correct.
+Check that `BOT_TOKEN` (or `BOT_TOKENS`) is correct, the bot has admin
+permissions in the group, and startup logs show no polling errors. The process
+removes any existing webhook before polling.
 </details>
 
 <details>

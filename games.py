@@ -10,6 +10,7 @@ import re
 import random
 import string
 import time
+import contextvars
 from pathlib import Path
 from typing import Callable, Optional, Dict
 
@@ -20,6 +21,7 @@ import httpx
 # ─────────────────────────────────────────────────────────
 
 _bot_token = ""
+_current_bot_token = contextvars.ContextVar("ttt_bot_token", default=None)
 SCORES_FILE = "data/ttt_scores.json"
 STATE_FILE = "data/ttt_state.json"
 SAVE_FN: Optional[Callable] = None
@@ -57,6 +59,14 @@ async def _get_http_client() -> httpx.AsyncClient:
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         )
     return _HTTP_CLIENT
+
+
+def set_current_bot_token(token: str):
+    _current_bot_token.set(token)
+
+
+def _active_bot_token() -> str:
+    return _current_bot_token.get() or _bot_token
 
 
 async def shutdown_games():
@@ -354,7 +364,7 @@ async def tg_send_message(
         if markup:
             payload["reply_markup"] = markup
         resp = await client.post(
-            f"https://api.telegram.org/bot{_bot_token}/sendMessage",
+            f"https://api.telegram.org/bot{_active_bot_token()}/sendMessage",
             json=payload,
         )
         data = resp.json()
@@ -408,7 +418,7 @@ async def tg_edit_message(
         if markup:
             payload["reply_markup"] = markup
         resp = await client.post(
-            f"https://api.telegram.org/bot{_bot_token}/editMessageText",
+            f"https://api.telegram.org/bot{_active_bot_token()}/editMessageText",
             json=payload,
         )
         return resp.status_code == 200
@@ -422,7 +432,7 @@ async def tg_delete_message(chat_id: int, message_id: int) -> bool:
     try:
         client = await _get_http_client()
         resp = await client.post(
-            f"https://api.telegram.org/bot{_bot_token}/deleteMessage",
+            f"https://api.telegram.org/bot{_active_bot_token()}/deleteMessage",
             json={"chat_id": chat_id, "message_id": message_id},
         )
         return resp.status_code == 200
@@ -440,7 +450,7 @@ async def tg_answer_callback(
     try:
         client = await _get_http_client()
         resp = await client.post(
-            f"https://api.telegram.org/bot{_bot_token}/answerCallbackQuery",
+            f"https://api.telegram.org/bot{_active_bot_token()}/answerCallbackQuery",
             json={
                 "callback_query_id": callback_id,
                 "text": text,

@@ -24,11 +24,19 @@ class SentriXConfig:
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db_name: str = "hr_moderation_bot"
     webhook_url: str = ""
+    bot_tokens: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "SentriXConfig":
+        configured_tokens = tuple(
+            dict.fromkeys(
+                token.strip()
+                for token in (os.getenv("BOT_TOKEN", "") + "," + os.getenv("BOT_TOKENS", "")).replace("\n", ",").split(",")
+                if token.strip()
+            )
+        )
         return cls(
-            bot_token=os.getenv("BOT_TOKEN", ""),
+            bot_token=configured_tokens[0] if configured_tokens else "",
             api_id=int(os.getenv("API_ID", "0")),
             api_hash=os.getenv("API_HASH", ""),
             owner_id=int(os.getenv("OWNER_ID", "0")),
@@ -49,6 +57,7 @@ class SentriXConfig:
             mongodb_uri=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
             mongodb_db_name=os.getenv("MONGODB_DB_NAME", "hr_moderation_bot"),
             webhook_url=os.getenv("WEBHOOK_URL") or os.getenv("APP_URL", ""),
+            bot_tokens=configured_tokens,
         )
 
     def validate(self) -> list[str]:

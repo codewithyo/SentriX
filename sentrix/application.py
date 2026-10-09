@@ -17,7 +17,6 @@
 #   FIX-K: Skip auto-delete for informational command replies.
 # =========================================================
 
-import os, json, time, random, string, asyncio, httpx, re
 import os, json, time, random, string, asyncio, httpx, re, contextvars
 import traceback, sys, shutil, io, threading
 import logging as std_logging
@@ -2915,7 +2914,6 @@ async def bot_poll_worker(token: str):
             command_status = await sync_commands(token)
             if not command_status.startswith("ok"):
                 log_msg(f"setMyCommands failed for bot: {command_status}", "WARNING")
-            retry_delay = 1
             while True:
                 response = await tg_api(
                     "getUpdates", token=token,
@@ -2928,6 +2926,7 @@ async def bot_poll_worker(token: str):
                 )
                 if not response.get("ok"):
                     raise RuntimeError(response.get("description", "getUpdates failed"))
+                retry_delay = 1
                 for update in response.get("result", []):
                     update_id = update.get("update_id")
                     try:

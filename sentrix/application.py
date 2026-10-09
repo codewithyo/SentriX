@@ -24,6 +24,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
+# Pyrogram 2.0 captures the default loop during import; Python 3.14 no longer
+# creates one automatically for the main thread.
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 from fastapi import FastAPI
 
 from pyrogram import Client, enums

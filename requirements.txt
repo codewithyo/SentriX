@@ -4,7 +4,7 @@ pyrogram==2.0.106
 # Required for Pyrogram's crypto operations
 tgcrypto
 
-# Web framework — receives webhook updates from Telegram
+# Web framework — health and status endpoints
 fastapi
 
 # HTTP client — used for Telegram Bot API calls and long polling
